@@ -1,0 +1,57 @@
+{
+  "name": "deepseek-harness-desktop",
+  "version": "0.0.1",
+  "description": "DeepSeek Harness Desktop",
+  "homepage": "https://github.com/deepseek-ai/deepseek-harness#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deepseek-ai/deepseek-harness.git"
+  },
+  "main": "src/main.js",
+  "author": {
+    "name": "DeepSeek AI",
+    "email": "276526105+imccyu@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build:icons && electron .",
+    "build:icons": "node scripts/generate-icons.mjs",
+    "build:icons:mac": "npm run build:icons && node scripts/generate-mac-icon.mjs",
+    "pack": "npm run build:icons && electron-builder --dir --publish never",
+    "dist": "npm run build:icons && electron-builder --publish never",
+    "dist:mac": "npm run build:icons:mac && electron-builder --mac --publish never",
+    "dist:mac:x64": "npm run build:icons:mac && electron-builder --mac --x64 --publish never",
+    "dist:mac:arm64": "npm run build:icons:mac && electron-builder --mac --arm64 --publish never",
+    "dist:win": "npm run build:icons && electron-builder --win --publish never",
+    "dist:linux": "npm run build:icons && electron-builder --linux --publish never",
+    "smoke:packaged": "node scripts/smoke-test-packaged-dsh.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis-plugin-group": "1.0.1",
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-atomic-write": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-bash-local": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-code-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-compaction": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-fs": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-invariants": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-output-retention": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sandbox": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session-telemetry": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session-title-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-shell": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-spill": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subagent-in-process-driver": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subprocess": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-workflow": "0.1.0-rc.6"
+  },
+  "devDependencies": {
+    "electron": "^43.4.0",
+    "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.3"
+  }
+}

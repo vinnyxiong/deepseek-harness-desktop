@@ -1,0 +1,281 @@
+name: Build macOS installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+            binary_arch: x86_64
+          - arch: arm64
+            runner: macos-15
+            binary_arch: arm64
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify native runner architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Runner: $(uname -a)"
+          test "$(uname -m)" = "${{ matrix.binary_arch }}"
+
+      - name: Verify release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Prepare signing and notarization
+        id: signing
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+          echo "notarize=false" >> "$GITHUB_OUTPUT"
+          echo "notarize_method=none" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "${CSC_LINK:-}" ]]; then
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "Signed build: no"
+            if [[ -n "${APPLE_API_KEY_BASE64:-}${APPLE_API_KEY_ID:-}${APPLE_API_ISSUER:-}${APPLE_ID:-}${APPLE_APP_SPECIFIC_PASSWORD:-}${APPLE_TEAM_ID:-}" ]]; then
+              echo "Notarization credentials are ignored because MAC_CSC_LINK is not configured"
+            fi
+            exit 0
+          fi
+
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "Signed build: yes"
+
+          if [[ -n "${APPLE_API_KEY_BASE64:-}" || -n "${APPLE_API_KEY_ID:-}" || -n "${APPLE_API_ISSUER:-}" ]]; then
+            if [[ -z "${APPLE_API_KEY_BASE64:-}" || -z "${APPLE_API_KEY_ID:-}" || -z "${APPLE_API_ISSUER:-}" ]]; then
+              echo "APPLE_API_KEY_BASE64, APPLE_API_KEY_ID and APPLE_API_ISSUER must all be set" >&2
+              exit 1
+            fi
+            key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            APPLE_API_KEY_PATH="$key_path" python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+          encoded = ''.join(os.environ["APPLE_API_KEY_BASE64"].split())
+          Path(os.environ["APPLE_API_KEY_PATH"]).write_bytes(
+              base64.b64decode(encoded, validate=True)
+          )
+          PY
+            chmod 600 "$key_path"
+            echo "APPLE_API_KEY=$key_path" >> "$GITHUB_ENV"
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+            echo "notarize_method=api_key" >> "$GITHUB_OUTPUT"
+            echo "Notarization: App Store Connect API key"
+            exit 0
+          fi
+
+          if [[ -n "${APPLE_ID:-}" || -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" || -n "${APPLE_TEAM_ID:-}" ]]; then
+            if [[ -z "${APPLE_ID:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
+              echo "APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID must all be set" >&2
+              exit 1
+            fi
+            echo "notarize=true" >> "$GITHUB_OUTPUT"
+            echo "notarize_method=apple_id" >> "$GITHUB_OUTPUT"
+            echo "Notarization: Apple ID"
+            exit 0
+          fi
+
+          echo "Notarization: disabled because no complete credential set is configured"
+
+      - name: Build unsigned installers
+        if: ${{ steps.signing.outputs.signed != 'true' }}
+        run: npm run dist:mac:${{ matrix.arch }}
+
+      - name: Build signed installers without notarization
+        if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize != 'true' }}
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
+        run: npm run dist:mac:${{ matrix.arch }}
+
+      - name: Build signed and notarized installers with API key
+        if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize_method == 'api_key' }}
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: npm run dist:mac:${{ matrix.arch }}
+
+      - name: Build signed and notarized installers with Apple ID
+        if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize_method == 'apple_id' }}
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run dist:mac:${{ matrix.arch }}
+
+      - name: Clean up notarization key
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${APPLE_API_KEY:-}" ]]; then
+            rm -f "$APPLE_API_KEY"
+          fi
+
+      - name: Locate packaged application
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps=()
+          while IFS= read -r -d '' candidate; do
+            apps+=("$candidate")
+          done < <(find release -type d -name 'DeepSeek Harness.app' -print0)
+          if [[ "${#apps[@]}" -ne 1 ]]; then
+            printf 'Expected one packaged app, found %s\n' "${#apps[@]}" >&2
+            find release -print
+            exit 1
+          fi
+          app_path="${apps[0]}"
+          echo "APP_PATH=$app_path" >> "$GITHUB_ENV"
+          echo "Found $app_path"
+
+      - name: Verify application architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          executable="$APP_PATH/Contents/MacOS/DeepSeek Harness"
+          actual="$(lipo -archs "$executable")"
+          echo "Application architecture: $actual"
+          test "$actual" = "${{ matrix.binary_arch }}"
+
+      - name: Verify bundled dsh runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime="$APP_PATH/Contents/Resources/app.asar.unpacked/node_modules"
+          required=(
+            "@deepseek-ai/dsh/lib/bin.js"
+            "@deepseek-ai/cordis-plugin-group/package.json"
+            "@deepseek-ai/dsh-invariants/package.json"
+            "@deepseek-ai/dsh-subprocess/package.json"
+            "@deepseek-ai/dsh-workflow/package.json"
+            "@deepseek-ai/dsh-web-frontend/dist/index.html"
+          )
+          for item in "${required[@]}"; do
+            test -f "$runtime/$item" || { echo "Missing runtime file: $item" >&2; exit 1; }
+          done
+
+      - name: Smoke test packaged dsh
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/smoke-test-packaged-dsh.mjs \
+            "$APP_PATH/Contents/MacOS/DeepSeek Harness" \
+            "$APP_PATH/Contents/Resources"
+
+      - name: Verify code signature
+        if: ${{ steps.signing.outputs.signed == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          codesign --display --verbose=2 "$APP_PATH"
+
+      - name: Validate notarization ticket
+        if: ${{ steps.signing.outputs.notarize == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun stapler validate "$APP_PATH"
+
+      - name: Verify installer archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dmgs=(release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.dmg)
+          zips=(release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.zip)
+          test "${#dmgs[@]}" -eq 1
+          test "${#zips[@]}" -eq 1
+          hdiutil verify "${dmgs[0]}"
+          unzip -t "${zips[0]}"
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(
+            release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.dmg
+            release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.zip
+          )
+          test "${#artifacts[@]}" -eq 2
+          (
+            cd release
+            relative=(
+              DeepSeek-Harness-*-mac-${{ matrix.arch }}.dmg
+              DeepSeek-Harness-*-mac-${{ matrix.arch }}.zip
+            )
+            shasum -a 256 "${relative[@]}" > "SHA256SUMS-mac-${{ matrix.arch }}.txt"
+          )
+          cat "release/SHA256SUMS-mac-${{ matrix.arch }}.txt"
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeek-Harness-${{ steps.version.outputs.value }}-mac-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.dmg
+            release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.dmg.blockmap
+            release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.zip
+            release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.zip.blockmap
+            release/SHA256SUMS-mac-${{ matrix.arch }}.txt
