@@ -56,7 +56,18 @@ Important security and lifecycle details:
 - The remote DSH should stay bound to `127.0.0.1`; do not expose it with `--host 0.0.0.0`.
 - Desktop connection preferences are stored in Electron's user-data directory as `desktop-settings.json`. Local DSH data remains under the `.dsh` subdirectory.
 
-## Requirements
+## Task completion notifications
+
+DeepSeek Harness Desktop can show native notifications when an Agent stops running and when background jobs complete, fail, or are killed. Open **DeepSeek Harness → Notification Settings…** from the macOS application menu to configure event categories, focus suppression, sound, and click-to-focus behavior.
+
+The notification watcher uses DSH's official host and mux event streams for local DSH, managed SSH, and external loopback tunnels. Existing idle sessions and terminal jobs are baselined without notification, so startup and reconnect do not replay old completions. Completions that happen while the App or event stream is disconnected are not replayed.
+
+Notifications are emitted by the Electron main process; DSH web content remains sandboxed and has no native notification permission. Clicking a notification only focuses or restores the App and never opens an event-provided URL. macOS notification permissions, Focus mode, sound, and lock-screen previews can override the App settings. Signed builds with a stable bundle identifier provide the most reliable Notification Center identity; unsigned test builds may behave differently.
+
+## Menu language
+
+Custom desktop menu labels and completion notifications follow DSH's `locale.preference` (`中文` or `English`) and update without restarting after the DSH language setting changes. If DSH has no explicit preference, the App follows the first supported system preferred language and falls back to Chinese. Native Electron role items such as About, Services, Copy, and Quit continue to follow the operating system language.
+
 
 - Node.js 24
 - npm

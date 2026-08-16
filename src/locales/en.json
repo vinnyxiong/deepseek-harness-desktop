@@ -1,0 +1,20 @@
+{
+  "menu.connection": "Connection",
+  "menu.connectionSettings": "Connection Settings…",
+  "menu.notificationSettings": "Notification Settings…",
+  "menu.reload": "Reload Current Connection",
+  "menu.disconnect": "Disconnect",
+  "menu.useLocal": "Use Local DSH",
+  "menu.edit": "Edit",
+  "menu.view": "View",
+  "menu.window": "Window",
+  "notify.agent.completed": "Agent completed",
+  "notify.agent.failed": "Agent failed",
+  "notify.agent.stopped": "Agent stopped",
+  "notify.job.completed": "Background job completed",
+  "notify.job.failed": "Background job failed",
+  "notify.job.killed": "Background job stopped",
+  "notify.unnamed": "Untitled task",
+  "notify.test.title": "DeepSeek Harness test notification",
+  "notify.test.body": "Task completion notifications are enabled"
+}

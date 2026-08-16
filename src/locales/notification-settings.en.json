@@ -1,0 +1,18 @@
+{
+  "title": "Notification Settings",
+  "description": "Configure native notifications when tasks finish.",
+  "enabled": "Enable task notifications",
+  "agent": "Agent completion",
+  "jobs": "Background jobs",
+  "completed": "Completed",
+  "failed": "Failed",
+  "killed": "Stopped",
+  "unfocused": "Notify only when the App is unfocused",
+  "sound": "Play sound",
+  "focus": "Show the App when a notification is clicked",
+  "save": "Save",
+  "test": "Send test notification",
+  "saved": "Saved",
+  "sent": "Test notification sent",
+  "unavailable": "System notifications are unavailable"
+}
