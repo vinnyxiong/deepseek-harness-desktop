@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>DeepSeek Harness 连接设置</title>
+  <link rel="stylesheet" href="./index.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="logo">DSH</div>
+      <div>
+        <h1>连接设置</h1>
+        <p>选择由 App 启动本机 DSH，或连接已经建立的 SSH 隧道。</p>
+      </div>
+    </header>
+
+    <section id="warning" class="message warning" hidden></section>
+    <section id="status" class="message" aria-live="polite">正在读取设置…</section>
+
+    <form id="connection-form">
+      <label class="mode-card">
+        <input type="radio" name="mode" value="local">
+        <span>
+          <strong>本机 DSH</strong>
+          <small>由 App 自动启动和停止内置的 dsh web 服务。</small>
+        </span>
+      </label>
+
+      <label class="mode-card">
+        <input type="radio" name="mode" value="tunnel">
+        <span>
+          <strong>现有 SSH 隧道</strong>
+          <small>连接由你在终端提前建立的本地端口转发。</small>
+        </span>
+      </label>
+
+      <section id="tunnel-fields" class="tunnel-fields">
+        <label for="local-port">本地转发端口</label>
+        <input id="local-port" name="localPort" type="number" min="1" max="65535" step="1" required>
+        <p>App 将验证并打开 <code id="endpoint-preview">http://127.0.0.1:3080</code></p>
+        <div class="hint">
+          <strong>请先在终端建立隧道：</strong>
+          <code>ssh -N -L &lt;本地端口&gt;:127.0.0.1:&lt;远程 DSH 端口&gt; user@host</code>
+          <span>远程机器上的 DSH 必须已经启动。App 不管理 SSH 认证，也不会停止你的 SSH 进程。</span>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="connect" type="submit" class="primary">保存并连接</button>
+        <button id="retry" type="button">重试</button>
+        <button id="use-local" type="button">切换到本机</button>
+      </div>
+    </form>
+  </main>
+  <script src="./index.js"></script>
+</body>
+</html>

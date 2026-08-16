@@ -1,0 +1,57 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f7fb;
+  color: #182033;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+main { max-width: 620px; margin: 0 auto; padding: 32px; }
+header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.logo {
+  display: grid; place-items: center; flex: 0 0 54px; height: 54px;
+  border-radius: 14px; color: white; font-weight: 750;
+  background: linear-gradient(135deg, #315efb, #8247ff);
+}
+h1 { margin: 0 0 6px; font-size: 26px; }
+header p { margin: 0; color: #667085; line-height: 1.45; }
+.message {
+  margin: 0 0 16px; padding: 12px 14px; border-radius: 10px;
+  background: #e9efff; color: #2549a8; white-space: pre-wrap;
+}
+.message.error { background: #ffeaeb; color: #a42831; }
+.message.success { background: #e5f7ed; color: #17663b; }
+.message.warning { background: #fff3d8; color: #7b5310; }
+.mode-card {
+  display: flex; gap: 12px; margin: 12px 0; padding: 16px;
+  border: 1px solid #d7ddea; border-radius: 12px; background: white; cursor: pointer;
+}
+.mode-card:has(input:checked) { border-color: #315efb; box-shadow: 0 0 0 2px #315efb22; }
+.mode-card input { margin-top: 3px; }
+.mode-card strong, .mode-card small { display: block; }
+.mode-card small { margin-top: 5px; color: #667085; line-height: 1.4; }
+.tunnel-fields {
+  margin-top: 14px; padding: 18px; border-radius: 12px; background: #eef1f7;
+}
+.tunnel-fields.disabled { opacity: .48; pointer-events: none; }
+.tunnel-fields > label { display: block; margin-bottom: 7px; font-weight: 650; }
+input[type="number"] {
+  width: 180px; padding: 9px 11px; border: 1px solid #b9c1d1; border-radius: 8px; font-size: 15px;
+}
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.hint { display: grid; gap: 8px; margin-top: 14px; color: #556070; font-size: 13px; line-height: 1.45; }
+.hint code { overflow-wrap: anywhere; padding: 9px; border-radius: 7px; background: #dde3ef; color: #2a3549; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+button { padding: 10px 16px; border: 1px solid #b9c1d1; border-radius: 9px; background: white; color: inherit; font-weight: 600; cursor: pointer; }
+button.primary { border-color: #315efb; background: #315efb; color: white; }
+button:disabled { opacity: .55; cursor: progress; }
+
+@media (prefers-color-scheme: dark) {
+  :root { background: #161922; color: #f2f4f8; }
+  header p, .mode-card small, .hint { color: #aeb6c6; }
+  .mode-card { background: #202530; border-color: #3a4252; }
+  .tunnel-fields { background: #202530; }
+  input[type="number"], button { background: #262c38; border-color: #4b5568; color: #f2f4f8; }
+  .hint code { background: #2a3140; color: #dce2ee; }
+}

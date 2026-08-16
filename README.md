@@ -1,6 +1,38 @@
 # DeepSeek Harness Desktop
 
-Electron desktop wrapper for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The application starts the bundled `dsh web` service on a free local port and opens it in an Electron window.
+Electron desktop wrapper for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The application can start the bundled `dsh web` service on a free local port, or connect to a remote DSH through an SSH tunnel that the user has already established.
+
+## Connection modes
+
+### Local DSH
+
+Local mode is the default. The App starts the bundled `dsh web --port 0`, validates the local service, and stops that child process when the App exits.
+
+### Existing SSH tunnel
+
+The App can load a remote DSH through a loopback port forwarded by an SSH process that you manage separately. Start DSH on the remote machine, keeping it bound to remote loopback:
+
+```bash
+dsh web --port 3080
+```
+
+Then establish the tunnel from the local Mac:
+
+```bash
+ssh -N -L 3080:127.0.0.1:3080 xiongyuanwen@10.37.117.240
+```
+
+Open **Connection → Connection Settings…**, choose **Existing SSH tunnel**, set the local forwarded port to `3080`, and connect. The App verifies and loads `http://127.0.0.1:3080`.
+
+The App remembers the last selected mode and automatically retries it on the next launch. If the tunnel is unavailable, it opens the connection settings instead of silently falling back to local DSH.
+
+Important security and lifecycle details:
+
+- The App does not start or stop `ssh` and does not start DSH on the remote machine.
+- SSH authentication, host-key checks, passwords, private keys, and `~/.ssh/config` remain entirely under the system SSH client. The App stores none of them.
+- The App only accepts a numeric loopback port and always constructs the URL as `http://127.0.0.1:<port>`.
+- The remote DSH should stay bound to `127.0.0.1`; do not expose it with `--host 0.0.0.0`.
+- Desktop connection preferences are stored in Electron's user-data directory as `desktop-settings.json`. Local DSH data remains under the `.dsh` subdirectory.
 
 ## Requirements
 

@@ -62,6 +62,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Run desktop tests
+        run: npm run check
+
       - name: Prepare signing and notarization
         id: signing
         shell: bash
@@ -210,6 +213,26 @@ jobs:
           )
           for item in "${required[@]}"; do
             test -f "$runtime/$item" || { echo "Missing runtime file: $item" >&2; exit 1; }
+          done
+
+      - name: Verify bundled desktop connection UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          asar="$APP_PATH/Contents/Resources/app.asar"
+          entries="$(npx asar list "$asar")"
+          required=(
+            "/src/main.js"
+            "/src/main/connection-manager.js"
+            "/src/main/dsh-health.js"
+            "/src/main/settings-store.js"
+            "/src/preload/connection-settings.js"
+            "/src/renderer/connection-settings/index.html"
+            "/src/renderer/connection-settings/index.js"
+            "/src/renderer/connection-settings/index.css"
+          )
+          for item in "${required[@]}"; do
+            grep -Fqx "$item" <<< "$entries" || { echo "Missing packaged desktop file: $item" >&2; exit 1; }
           done
 
       - name: Smoke test packaged dsh
