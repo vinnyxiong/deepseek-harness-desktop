@@ -43,10 +43,10 @@ function createWindowManager({ onMainWindowClosed } = {}) {
 
     settingsWindow = new BrowserWindow({
       title: 'DeepSeek Harness Connection',
-      width: 620,
-      height: 650,
-      minWidth: 540,
-      minHeight: 560,
+      width: 720,
+      height: 820,
+      minWidth: 600,
+      minHeight: 650,
       show: false,
       webPreferences: {
         preload: path.join(__dirname, '..', 'preload', 'connection-settings.js'),

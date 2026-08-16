@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('desktopConnection', Object.freeze({
   getState: () => ipcRenderer.invoke('connection:get-state'),
   saveAndConnect: settings => ipcRenderer.invoke('connection:save-and-connect', settings),
   retry: () => ipcRenderer.invoke('connection:retry'),
+  disconnect: () => ipcRenderer.invoke('connection:disconnect'),
   useLocal: () => ipcRenderer.invoke('connection:use-local'),
   onRefresh(callback) {
     if (typeof callback !== 'function') throw new TypeError('Refresh callback must be a function');

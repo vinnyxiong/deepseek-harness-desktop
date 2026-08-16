@@ -7,54 +7,33 @@
   <title>DeepSeek Harness 连接设置</title>
   <link rel="stylesheet" href="./index.css">
 </head>
-<body>
-  <main>
-    <header>
-      <div class="logo">DSH</div>
-      <div>
-        <h1>连接设置</h1>
-        <p>选择由 App 启动本机 DSH，或连接已经建立的 SSH 隧道。</p>
-      </div>
-    </header>
+<body><main>
+<header><div class="logo">DSH</div><div><h1>连接设置</h1><p>连接本机 DSH，或通过 SSH 访问远程 DSH。</p></div></header>
+<section id="warning" class="message warning" hidden></section>
+<section id="status" class="message" aria-live="polite">正在读取设置…</section>
+<form id="connection-form">
+<label class="mode-card"><input type="radio" name="mode" value="local"><span><strong>本机 DSH</strong><small>由 App 启动和停止内置 DSH。</small></span></label>
+<label class="mode-card"><input type="radio" name="mode" value="managedSsh"><span><strong>自动管理 SSH 隧道</strong><small>App 自动运行 SSH，切换、断开或退出时自动关闭。</small></span></label>
+<label class="mode-card"><input type="radio" name="mode" value="external"><span><strong>已有外部 SSH 隧道</strong><small>连接你在终端中自行维护的端口转发。</small></span></label>
 
-    <section id="warning" class="message warning" hidden></section>
-    <section id="status" class="message" aria-live="polite">正在读取设置…</section>
+<section id="managed-fields" class="fields">
+  <div class="grid">
+    <label>SSH 主机<input id="ssh-host" type="text" maxlength="253" autocomplete="off"></label>
+    <label>SSH 用户<input id="ssh-username" type="text" maxlength="64" autocomplete="username"></label>
+    <label>SSH 端口<input id="ssh-port" type="number" min="1" max="65535"></label>
+    <label>本地转发端口<input id="managed-local-port" type="number" min="1" max="65535"></label>
+    <label>远程 DSH 端口<input id="remote-port" type="number" min="1" max="65535"></label>
+    <label>主机密钥<select id="host-key-policy"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
+  </div>
+  <label>私钥绝对路径（可选）<input id="identity-file" type="text" placeholder="/Users/name/.ssh/id_ed25519" autocomplete="off"></label>
+  <div class="hint"><strong>将自动运行：</strong><code id="command-preview"></code><span>远程 DSH 必须已启动。App 不保存密码或私钥口令；请使用 ssh-agent、macOS 钥匙串或已配置密钥。</span></div>
+</section>
 
-    <form id="connection-form">
-      <label class="mode-card">
-        <input type="radio" name="mode" value="local">
-        <span>
-          <strong>本机 DSH</strong>
-          <small>由 App 自动启动和停止内置的 dsh web 服务。</small>
-        </span>
-      </label>
+<section id="external-fields" class="fields">
+  <label>已有隧道的本地端口<input id="external-local-port" type="number" min="1" max="65535"></label>
+  <p>App 将打开 <code id="external-preview"></code>，不会启动或停止外部 SSH。</p>
+</section>
 
-      <label class="mode-card">
-        <input type="radio" name="mode" value="tunnel">
-        <span>
-          <strong>现有 SSH 隧道</strong>
-          <small>连接由你在终端提前建立的本地端口转发。</small>
-        </span>
-      </label>
-
-      <section id="tunnel-fields" class="tunnel-fields">
-        <label for="local-port">本地转发端口</label>
-        <input id="local-port" name="localPort" type="number" min="1" max="65535" step="1" required>
-        <p>App 将验证并打开 <code id="endpoint-preview">http://127.0.0.1:3080</code></p>
-        <div class="hint">
-          <strong>请先在终端建立隧道：</strong>
-          <code>ssh -N -L &lt;本地端口&gt;:127.0.0.1:&lt;远程 DSH 端口&gt; user@host</code>
-          <span>远程机器上的 DSH 必须已经启动。App 不管理 SSH 认证，也不会停止你的 SSH 进程。</span>
-        </div>
-      </section>
-
-      <div class="actions">
-        <button id="connect" type="submit" class="primary">保存并连接</button>
-        <button id="retry" type="button">重试</button>
-        <button id="use-local" type="button">切换到本机</button>
-      </div>
-    </form>
-  </main>
-  <script src="./index.js"></script>
-</body>
-</html>
+<div class="actions"><button type="submit" class="primary">保存并连接</button><button id="retry" type="button">重试</button><button id="disconnect" type="button">断开</button><button id="use-local" type="button">切换到本机</button></div>
+</form>
+</main><script src="./index.js"></script></body></html>

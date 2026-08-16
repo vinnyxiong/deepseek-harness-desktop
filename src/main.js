@@ -4,6 +4,7 @@ const { ConnectionActions } = require('./main/connection-actions');
 const { ConnectionManager } = require('./main/connection-manager');
 const { registerConnectionIpc } = require('./main/ipc');
 const { startLocalDsh } = require('./main/local-dsh');
+const { startManagedSsh } = require('./main/managed-ssh');
 const { createSettingsStore } = require('./main/settings-store');
 const { createWindowManager } = require('./main/windows');
 
@@ -53,6 +54,10 @@ function buildMenu() {
       {
         label: 'Reload Current Connection',
         click: () => void reconnectCurrent(),
+      },
+      {
+        label: 'Disconnect',
+        click: () => void disconnectCurrent(),
       },
       {
         label: 'Use Local DSH',
@@ -107,6 +112,13 @@ async function persistSettings(next) {
   }
 }
 
+async function disconnectCurrent() {
+  return actions.run(async () => {
+    await manager.disconnect();
+    windows.recoverToSettings();
+  });
+}
+
 async function switchToLocal() {
   return actions.run(async () => {
     const next = { ...settings, mode: 'local' };
@@ -139,6 +151,10 @@ async function initialize() {
       resourcesPath: process.resourcesPath,
       isPackaged: app.isPackaged,
       dshHome: path.join(app.getPath('userData'), '.dsh'),
+      onUnexpectedExit,
+    }),
+    startManagedSsh: (managedSettings, onUnexpectedExit) => startManagedSsh({
+      settings: managedSettings,
       onUnexpectedExit,
     }),
   });

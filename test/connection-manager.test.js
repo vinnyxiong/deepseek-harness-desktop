@@ -3,7 +3,15 @@ const test = require('node:test');
 const { ConnectionManager, tunnelHandle } = require('../src/main/connection-manager');
 
 function settings(mode, port = 3080) {
-  return { schemaVersion: 1, mode, tunnel: { localPort: port } };
+  return {
+    schemaVersion: 2,
+    mode: mode === 'tunnel' ? 'external' : mode,
+    externalTunnel: { localPort: port },
+    managedSsh: {
+      host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
+      localPort: port, remotePort: 3080, identityFile: null, hostKeyPolicy: 'accept-new',
+    },
+  };
 }
 
 function fakeHealth() {
@@ -192,6 +200,65 @@ test('dispose waits for cleanup started by monitor failure', async () => {
   releaseStop();
   await disposing;
   assert.equal(disposed, true);
+});
+
+test('managed SSH handles are owned and stopped on dispose', async () => {
+  let stopped = 0;
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() { stopped += 1; },
+    }),
+    health: fakeHealth(),
+  });
+  const snapshot = await manager.connect(settings('managedSsh'));
+  assert.equal(snapshot.mode, 'managedSsh');
+  await manager.dispose();
+  assert.equal(stopped, 1);
+});
+
+test('managed SSH replacement on same port stops old handle first', async () => {
+  const order = [];
+  let count = 0;
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => {
+      count += 1; order.push(`start-${count}`);
+      return { mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true, isRunning: () => true, async stop() { order.push(`stop-${count}`); } };
+    },
+    health: fakeHealth(),
+  });
+  await manager.connect(settings('managedSsh'));
+  const changed = settings('managedSsh'); changed.managedSsh.host = '10.37.117.241';
+  await manager.connect(changed);
+  assert.deepEqual(order.slice(0, 3), ['start-1', 'stop-1', 'start-2']);
+  await manager.dispose();
+});
+
+test('failed old-handle stop restores previous endpoint and settings', async () => {
+  let starts = 0;
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async config => {
+      starts += 1;
+      const old = starts === 1;
+      return {
+        mode: 'managedSsh', endpoint: `http://127.0.0.1:${config.localPort}`, port: config.localPort,
+        owned: true, isRunning: () => true,
+        async stop() { if (old) throw new Error('EPERM'); },
+      };
+    },
+    health: fakeHealth(),
+  });
+  const original = settings('managedSsh', 3080);
+  await manager.connect(original);
+  const changed = settings('managedSsh', 4123); changed.managedSsh.host = 'new.example';
+  await assert.rejects(() => manager.connect(changed), /previous connection could not be stopped/);
+  const snapshot = manager.getSnapshot();
+  assert.equal(snapshot.endpoint, 'http://127.0.0.1:3080');
+  assert.deepEqual(snapshot.settings, original);
+  assert.deepEqual(manager.targetSettings, original);
 });
 
 test('tunnel handle stop never terminates a user process', async () => {

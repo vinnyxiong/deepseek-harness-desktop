@@ -46,6 +46,8 @@ jobs:
           set -euo pipefail
           echo "Runner: $(uname -a)"
           test "$(uname -m)" = "${{ matrix.binary_arch }}"
+          test -x /usr/bin/ssh
+          /usr/bin/ssh -V
 
       - name: Verify release version
         id: version
@@ -225,6 +227,7 @@ jobs:
             "/src/main.js"
             "/src/main/connection-manager.js"
             "/src/main/dsh-health.js"
+            "/src/main/managed-ssh.js"
             "/src/main/settings-store.js"
             "/src/preload/connection-settings.js"
             "/src/renderer/connection-settings/index.html"

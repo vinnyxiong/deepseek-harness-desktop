@@ -5,6 +5,7 @@ const CHANNELS = [
   'connection:get-state',
   'connection:save-and-connect',
   'connection:retry',
+  'connection:disconnect',
   'connection:use-local',
 ];
 
@@ -70,6 +71,15 @@ function registerConnectionIpc({ actions, manager, windows, getSettings, getWarn
       const snapshot = await manager.retry();
       if (!snapshot.settings) throw new Error('There is no connection preference to save');
       return presentAndPersist(snapshot.settings, snapshot);
+    });
+  });
+
+  ipcMain.handle('connection:disconnect', event => {
+    authorize(event);
+    return runTransaction(async () => {
+      await manager.disconnect();
+      windows.recoverToSettings();
+      return manager.getSnapshot();
     });
   });
 

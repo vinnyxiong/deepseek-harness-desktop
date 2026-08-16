@@ -4,13 +4,35 @@ Electron desktop wrapper for [DeepSeek Harness](https://github.com/deepseek-ai/d
 
 ## Connection modes
 
+### Managed SSH tunnel
+
+The recommended remote mode lets the App run and own the SSH forward automatically. The initial form is prefilled for:
+
+```text
+SSH host: 10.37.117.240
+SSH user: xiongyuanwen
+SSH port: 22
+Local port: 3080
+Remote DSH port: 3080
+```
+
+It safely invokes the argument-array equivalent of:
+
+```bash
+ssh -N -L 3080:127.0.0.1:3080 xiongyuanwen@10.37.117.240
+```
+
+The remote machine must already run `dsh web --port 3080`. The App starts the system `/usr/bin/ssh`, verifies the DSH page through the tunnel, and stops SSH when you disconnect, switch modes, or quit the App. Closing only the macOS window keeps the connection running, following normal macOS behavior.
+
+Authentication is non-interactive: use `ssh-agent`, macOS Keychain, `~/.ssh/config`, or an already usable identity file. The App never asks for or stores SSH passwords or key passphrases. New host keys are accepted and recorded on first connection; changed host keys are rejected.
+
 ### Local DSH
 
 Local mode is the default. The App starts the bundled `dsh web --port 0`, validates the local service, and stops that child process when the App exits.
 
 ### Existing SSH tunnel
 
-The App can load a remote DSH through a loopback port forwarded by an SSH process that you manage separately. Start DSH on the remote machine, keeping it bound to remote loopback:
+The App can also load a remote DSH through a loopback port forwarded by an SSH process that you manage separately. Start DSH on the remote machine, keeping it bound to remote loopback:
 
 ```bash
 dsh web --port 3080
