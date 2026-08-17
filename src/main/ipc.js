@@ -7,6 +7,8 @@ const CHANNELS = [
   'connection:retry',
   'connection:disconnect',
   'connection:use-local',
+  'connection:remote-dsh-restart',
+  'connection:remote-dsh-stop',
 ];
 
 function registerConnectionIpc({ actions, manager, windows, getSettings, getWarning, persistSettings }) {
@@ -88,6 +90,22 @@ function registerConnectionIpc({ actions, manager, windows, getSettings, getWarn
     const current = getSettings();
     const settings = validateSettings({ ...current, mode: 'local' });
     return runTransaction(() => connectPersistAndPresent(settings));
+  });
+
+  ipcMain.handle('connection:remote-dsh-restart', event => {
+    authorize(event);
+    return runTransaction(async () => {
+      await manager.restartRemoteDsh();
+      return manager.getSnapshot();
+    });
+  });
+
+  ipcMain.handle('connection:remote-dsh-stop', event => {
+    authorize(event);
+    return runTransaction(async () => {
+      await manager.stopRemoteDsh();
+      return manager.getSnapshot();
+    });
   });
 
   return () => {

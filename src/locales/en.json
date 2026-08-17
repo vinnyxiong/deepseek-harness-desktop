@@ -16,5 +16,7 @@
   "notify.job.killed": "Background job stopped",
   "notify.unnamed": "Untitled task",
   "notify.test.title": "DeepSeek Harness test notification",
-  "notify.test.body": "Task completion notifications are enabled"
+  "notify.test.body": "Task completion notifications are enabled",
+  "menu.restartRemoteDsh": "Restart Remote DSH",
+  "menu.stopRemoteDsh": "Stop Remote DSH"
 }

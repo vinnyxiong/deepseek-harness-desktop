@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('desktopConnection', Object.freeze({
   retry: () => ipcRenderer.invoke('connection:retry'),
   disconnect: () => ipcRenderer.invoke('connection:disconnect'),
   useLocal: () => ipcRenderer.invoke('connection:use-local'),
+  restartRemoteDsh: () => ipcRenderer.invoke('connection:remote-dsh-restart'),
+  stopRemoteDsh: () => ipcRenderer.invoke('connection:remote-dsh-stop'),
   onRefresh(callback) {
     if (typeof callback !== 'function') throw new TypeError('Refresh callback must be a function');
     const listener = () => callback();

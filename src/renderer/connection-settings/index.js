@@ -18,6 +18,13 @@ const externalPreview = $('#external-preview');
 const retryButton = $('#retry');
 const disconnectButton = $('#disconnect');
 const useLocalButton = $('#use-local');
+const autoStartRemoteDsh = $('#auto-start-remote-dsh');
+const autoStopRemoteDsh = $('#auto-stop-remote-dsh');
+const remoteDshStatus = $('#remote-dsh-status');
+const remoteDshStatusText = $('#remote-dsh-status-text');
+const remoteDshActions = $('#remote-dsh-actions');
+const restartRemoteDshBtn = $('#restart-remote-dsh');
+const stopRemoteDshBtn = $('#stop-remote-dsh');
 let currentState = null;
 let busy = false;
 
@@ -32,6 +39,10 @@ function updateMode() {
   const selected = mode();
   managedFields.hidden = selected !== 'managedSsh';
   externalFields.hidden = selected !== 'external';
+  const showControls = selected === 'managedSsh';
+  autoStartRemoteDsh.closest('.checkbox-label').hidden = !showControls;
+  autoStopRemoteDsh.closest('.checkbox-label').hidden = !showControls;
+  if (!showControls) { remoteDshStatus.hidden = true; remoteDshActions.hidden = true; }
   if (!busy) for (const element of form.querySelectorAll('input,select,button')) element.disabled = false;
 }
 function updatePreview() {
@@ -53,6 +64,18 @@ function render(snapshot) {
   retryButton.hidden = snapshot.state !== 'error';
   disconnectButton.hidden = snapshot.state !== 'connected';
   useLocalButton.hidden = snapshot.state !== 'error' || snapshot.mode === 'local';
+  const showRemoteDsh = snapshot.mode === 'managedSsh' && snapshot.state === 'connected';
+  remoteDshStatus.hidden = !showRemoteDsh;
+  remoteDshActions.hidden = !showRemoteDsh;
+  if (showRemoteDsh && snapshot.remoteDsh) {
+    if (snapshot.remoteDsh.running) {
+      remoteDshStatusText.textContent = `远程 DSH 运行中 (PID: ${snapshot.remoteDsh.pid})`;
+      remoteDshStatus.className = 'remote-dsh-status running';
+    } else {
+      remoteDshStatusText.textContent = '远程 DSH 未运行';
+      remoteDshStatus.className = 'remote-dsh-status stopped';
+    }
+  }
 }
 function showError(error) { render({ ...(currentState || { mode: mode(), endpoint: null }), state: 'error', error: error?.message || String(error) }); }
 async function perform(action) {
@@ -79,6 +102,7 @@ function buildSettings() {
       localPort: managedActive ? port(managedLocalPort, '本地转发端口') : validPortOrDefault(managedLocalPort, 3080),
       remotePort: managedActive ? port(remotePort, '远程 DSH 端口') : validPortOrDefault(remotePort, 3080),
       identityFile: identityFile.value.trim() || null, hostKeyPolicy: hostKeyPolicy.value || 'accept-new',
+        autoStartRemoteDsh: autoStartRemoteDsh.checked, autoStopRemoteDsh: autoStopRemoteDsh.checked,
     },
   };
 }
@@ -91,6 +115,8 @@ function applyState(initial) {
     sshPort.value = settings.managedSsh.sshPort; managedLocalPort.value = settings.managedSsh.localPort;
     remotePort.value = settings.managedSsh.remotePort; identityFile.value = settings.managedSsh.identityFile || '';
     hostKeyPolicy.value = settings.managedSsh.hostKeyPolicy;
+    autoStartRemoteDsh.checked = settings.managedSsh.autoStartRemoteDsh ?? true;
+    autoStopRemoteDsh.checked = settings.managedSsh.autoStopRemoteDsh ?? true;
   }
   warningElement.hidden = !initial.warning; warningElement.textContent = initial.warning || '';
   updateMode(); updatePreview(); render(initial);
@@ -102,4 +128,6 @@ form.addEventListener('submit', event => { event.preventDefault(); try { const s
 retryButton.addEventListener('click', () => void perform(() => api.retry()));
 disconnectButton.addEventListener('click', () => void perform(() => api.disconnect()));
 useLocalButton.addEventListener('click', () => { form.elements.mode.value = 'local'; updateMode(); void perform(() => api.useLocal()); });
+restartRemoteDshBtn.addEventListener('click', () => void perform(() => api.restartRemoteDsh()));
+stopRemoteDshBtn.addEventListener('click', () => void perform(() => api.stopRemoteDsh()));
 api.onStatus(render); api.onRefresh(() => void refreshState()); void refreshState();

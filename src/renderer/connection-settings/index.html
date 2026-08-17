@@ -26,6 +26,12 @@
     <label>主机密钥<select id="host-key-policy"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
   </div>
   <label>私钥绝对路径（可选）<input id="identity-file" type="text" placeholder="/Users/name/.ssh/id_ed25519" autocomplete="off"></label>
+  <div class="remote-dsh-controls">
+    <label class="checkbox-label"><input id="auto-start-remote-dsh" type="checkbox"><span>连接时自动启动远程 DSH</span></label>
+    <label class="checkbox-label"><input id="auto-stop-remote-dsh" type="checkbox"><span>断开时自动停止远程 DSH</span></label>
+    <div id="remote-dsh-status" class="remote-dsh-status" hidden><span class="status-indicator"></span><span id="remote-dsh-status-text"></span></div>
+    <div class="remote-dsh-actions" id="remote-dsh-actions" hidden><button id="restart-remote-dsh" type="button">重启远程 DSH</button><button id="stop-remote-dsh" type="button">停止远程 DSH</button></div>
+  </div>
   <div class="hint"><strong>将自动运行：</strong><code id="command-preview"></code><span>远程 DSH 必须已启动。App 不保存密码或私钥口令；请使用 ssh-agent、macOS 钥匙串或已配置密钥。</span></div>
 </section>
 

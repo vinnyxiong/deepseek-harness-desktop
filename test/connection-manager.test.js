@@ -10,6 +10,7 @@ function settings(mode, port = 3080) {
     managedSsh: {
       host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
       localPort: port, remotePort: 3080, identityFile: null, hostKeyPolicy: 'accept-new',
+      autoStartRemoteDsh: true, autoStopRemoteDsh: true,
     },
   };
 }
@@ -265,4 +266,158 @@ test('tunnel handle stop never terminates a user process', async () => {
   const handle = tunnelHandle(3080);
   assert.equal(handle.owned, false);
   await handle.stop();
+});
+
+test('remoteDsh state is null for non-managedSsh modes', async () => {
+  const manager = new ConnectionManager({
+    startLocal: async () => ({
+      mode: 'local', endpoint: 'http://127.0.0.1:4100', owned: true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: { startRemoteDsh: async () => {}, stopRemoteDsh: async () => {}, getRemoteDshStatus: async () => ({ running: false, pid: null }) },
+  });
+  await manager.connect(settings('local'));
+  const snapshot = manager.getSnapshot();
+  assert.equal(snapshot.remoteDsh, null);
+  await manager.dispose();
+});
+
+test('snapshot includes remoteDsh state for managedSsh mode', async () => {
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: { startRemoteDsh: async () => ({ status: 'started', pid: 9999 }), stopRemoteDsh: async () => {}, getRemoteDshStatus: async () => ({ running: true, pid: 9999 }) },
+  });
+  const snapshot = await manager.connect(settings('managedSsh'));
+  assert.equal(snapshot.remoteDsh.running, true);
+  assert.equal(snapshot.remoteDsh.pid, 9999);
+  await manager.dispose();
+});
+
+test('auto-start remote DSH before managed SSH tunnel creation', async () => {
+  const calls = [];
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => {
+      calls.push('tunnel');
+      return { mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true, isRunning: () => true, async stop() {} };
+    },
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async () => { calls.push('remote-start'); return { status: 'started', pid: 9999 }; },
+      stopRemoteDsh: async () => { calls.push('remote-stop'); },
+      getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
+    },
+  });
+  await manager.connect(settings('managedSsh'));
+  assert.deepEqual(calls, ['remote-start', 'tunnel']);
+  await manager.dispose();
+  assert.ok(calls.includes('remote-stop'));
+});
+
+test('does not fail if remote DSH auto-start errors', async () => {
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async () => { throw new Error('cannot reach remote'); },
+      stopRemoteDsh: async () => {},
+      getRemoteDshStatus: async () => ({ running: false, pid: null }),
+    },
+  });
+  const snapshot = await manager.connect(settings('managedSsh'));
+  assert.equal(snapshot.state, 'connected');
+  assert.equal(snapshot.remoteDsh.running, false);
+  await manager.dispose();
+});
+
+test('does not auto-stop remote DSH when switching connections', async () => {
+  const calls = [];
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async config => ({
+      mode: 'managedSsh', endpoint: `http://127.0.0.1:${config.localPort}`, port: config.localPort,
+      owned: true, isRunning: () => true, async stop() { calls.push('tunnel-stop'); },
+    }),
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async () => { calls.push('remote-start'); return { status: 'started', pid: 9999 }; },
+      stopRemoteDsh: async () => { calls.push('remote-stop'); },
+      getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
+    },
+  });
+  await manager.connect(settings('managedSsh', 3080));
+  calls.length = 0;
+  const changed = settings('managedSsh', 4123); changed.managedSsh.host = '10.37.117.241';
+  await manager.connect(changed);
+  assert.ok(!calls.includes('remote-stop'), 'remote DSH should not be stopped during switch');
+  assert.ok(calls.includes('remote-start'), 'new remote DSH should be started');
+  assert.ok(calls.includes('tunnel-stop'), 'old tunnel should be stopped');
+  await manager.dispose();
+});
+
+test('restartRemoteDsh stops then starts', async () => {
+  const calls = [];
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async () => { calls.push('start'); return { status: 'started', pid: 10000 }; },
+      stopRemoteDsh: async () => { calls.push('stop'); },
+      getRemoteDshStatus: async () => ({ running: true, pid: 10000 }),
+    },
+  });
+  await manager.connect(settings('managedSsh'));
+  calls.length = 0;
+  const result = await manager.restartRemoteDsh();
+  assert.deepEqual(calls, ['stop', 'start']);
+  assert.equal(result.running, true);
+  assert.equal(result.pid, 10000);
+  await manager.dispose();
+});
+
+test('restartRemoteDsh throws when not in managedSsh mode', async () => {
+  const manager = new ConnectionManager({
+    startLocal: async () => ({
+      mode: 'local', endpoint: 'http://127.0.0.1:4100', owned: true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: { startRemoteDsh: async () => {}, stopRemoteDsh: async () => {}, getRemoteDshStatus: async () => ({ running: false, pid: null }) },
+  });
+  await manager.connect(settings('local'));
+  await assert.rejects(() => manager.restartRemoteDsh(), /only available in managed SSH mode/);
+  await manager.dispose();
+});
+
+test('stopRemoteDsh updates state', async () => {
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async () => ({ status: 'started', pid: 9999 }),
+      stopRemoteDsh: async () => {},
+      getRemoteDshStatus: async () => ({ running: false, pid: null }),
+    },
+  });
+  await manager.connect(settings('managedSsh'));
+  const result = await manager.stopRemoteDsh();
+  assert.equal(result.running, false);
+  assert.equal(result.pid, null);
+  await manager.dispose();
 });

@@ -66,3 +66,23 @@ test('backs up corrupt settings and returns defaults', async () => {
   await assert.rejects(() => access(store.path), /ENOENT/);
   assert.equal(await readFile(backupPath, 'utf8'), '{bad json');
 });
+
+test('managed settings include autoStartRemoteDsh and autoStopRemoteDsh defaults', () => {
+  const result = validateSettings(managed());
+  assert.equal(result.managedSsh.autoStartRemoteDsh, true);
+  assert.equal(result.managedSsh.autoStopRemoteDsh, true);
+});
+
+test('rejects non-boolean autoStartRemoteDsh', () => {
+  assert.throws(() => validateSettings(managed({ autoStartRemoteDsh: 'yes' })), /must be a boolean/);
+});
+
+test('rejects non-boolean autoStopRemoteDsh', () => {
+  assert.throws(() => validateSettings(managed({ autoStopRemoteDsh: 1 })), /must be a boolean/);
+});
+
+test('accepts false values for autoStartRemoteDsh and autoStopRemoteDsh', () => {
+  const result = validateSettings(managed({ autoStartRemoteDsh: false, autoStopRemoteDsh: false }));
+  assert.equal(result.managedSsh.autoStartRemoteDsh, false);
+  assert.equal(result.managedSsh.autoStopRemoteDsh, false);
+});

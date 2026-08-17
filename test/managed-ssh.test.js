@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
-const { buildManagedSshArgs, classifySshError, startManagedSsh } = require('../src/main/managed-ssh');
+const { buildCommonSshOptions, buildManagedSshArgs, classifySshError, startManagedSsh } = require('../src/main/managed-ssh');
 
 const settings = {
   host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
@@ -28,6 +28,17 @@ test('adds identity and strict host-key options', () => {
 test('classifies common authentication errors', () => {
   assert.match(classifySshError('Permission denied (publickey).', 'failed'), /authentication failed/);
   assert.match(classifySshError('Host key verification failed.', 'failed'), /host-key verification failed/);
+});
+
+test('buildCommonSshOptions produces args without tunnel flags', () => {
+  const args = buildCommonSshOptions(settings);
+  assert.ok(!args.includes('-N'));
+  assert.ok(!args.includes('-T'));
+  assert.ok(!args.includes('-n'));
+  assert.ok(!args.includes('-L'));
+  assert.ok(!args.some(a => a.includes('ExitOnForwardFailure')));
+  assert.ok(args.includes('BatchMode=yes'));
+  assert.deepEqual(args.slice(-4), ['-p', '22', '--', 'xiongyuanwen@10.37.117.240']);
 });
 
 test('starts and idempotently stops an owned SSH process', async () => {

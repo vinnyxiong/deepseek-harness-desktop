@@ -16,5 +16,7 @@
   "notify.job.killed": "后台任务已终止",
   "notify.unnamed": "未命名任务",
   "notify.test.title": "DeepSeek Harness 测试通知",
-  "notify.test.body": "任务完成通知已启用"
+  "notify.test.body": "任务完成通知已启用",
+  "menu.restartRemoteDsh": "重启远程 DSH",
+  "menu.stopRemoteDsh": "停止远程 DSH"
 }

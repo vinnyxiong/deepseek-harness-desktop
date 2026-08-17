@@ -10,6 +10,7 @@ const { registerConnectionIpc } = require('./main/ipc');
 const { LocaleService } = require('./main/locale-service');
 const { startLocalDsh } = require('./main/local-dsh');
 const { startManagedSsh } = require('./main/managed-ssh');
+const { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus } = require('./main/remote-dsh');
 const { registerNotificationIpc } = require('./main/notification-ipc');
 const { NotificationService } = require('./main/notification-service');
 const { createNotificationSettingsStore } = require('./main/notification-settings-store');
@@ -23,8 +24,10 @@ app.setName('DeepSeek Harness');
 
 function buildMenu() {
   const t = key => translate(localeService?.getLocale() ?? 'zh', key); const template = [];
+  const snapshot = manager?.getSnapshot();
+  const isManagedConnected = snapshot?.mode === 'managedSsh' && snapshot?.state === 'connected';
   if (process.platform === 'darwin') template.push({ label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { label: t('menu.connectionSettings'), accelerator: 'CommandOrControl+,', click: () => windows.showSettings() }, { label: t('menu.notificationSettings'), click: () => windows.showNotificationSettings() }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] });
-  template.push({ label: t('menu.connection'), submenu: [{ label: t('menu.reload'), click: () => void reconnectCurrent() }, { label: t('menu.disconnect'), click: () => void disconnectCurrent() }, { label: t('menu.useLocal'), click: () => void switchToLocal() }] });
+  template.push({ label: t('menu.connection'), submenu: [{ label: t('menu.reload'), click: () => void reconnectCurrent() }, { label: t('menu.disconnect'), click: () => void disconnectCurrent() }, { label: t('menu.useLocal'), click: () => void switchToLocal() }, { type: 'separator' }, { label: t('menu.restartRemoteDsh'), enabled: isManagedConnected, click: () => void restartRemoteDshAction() }, { label: t('menu.stopRemoteDsh'), enabled: isManagedConnected, click: () => void stopRemoteDshAction() }] });
   if (process.platform !== 'darwin') template.push({ label: localeService?.getLocale() === 'en' ? 'Settings' : '设置', submenu: [{ label: t('menu.connectionSettings'), accelerator: 'CommandOrControl+,', click: () => windows.showSettings() }, { label: t('menu.notificationSettings'), click: () => windows.showNotificationSettings() }] });
   template.push({ label: t('menu.edit'), submenu: [{ role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] }, { label: t('menu.view'), submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { role: 'togglefullscreen' }] }, { label: t('menu.window'), submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }] });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -40,6 +43,8 @@ async function reconnectCurrent() { windows.showSettings(); await actions.run(co
 async function persistSettings(next) { settings = next; manager.setTargetSettings(next); try { settings = await settingsStore.save(next); settingsWarning = null; return settings; } catch (error) { settingsWarning = `Connection preference not saved: ${error.message}`; throw error; } }
 async function disconnectCurrent() { return actions.run(async () => { await manager.disconnect(); windows.recoverToSettings(); }); }
 async function switchToLocal() { return actions.run(async () => { const next = { ...settings, mode: 'local' }; try { const snapshot = await manager.connect(next); await presentSnapshot(snapshot); try { await persistSettings(next); } catch {} } catch { windows.showSettings(); } }); }
+async function restartRemoteDshAction() { return actions.run(async () => { await manager.restartRemoteDsh(); windows.sendStatus(manager.getSnapshot()); }); }
+async function stopRemoteDshAction() { return actions.run(async () => { await manager.stopRemoteDsh(); windows.sendStatus(manager.getSnapshot()); }); }
 function focusFromNotification() { const snapshot = manager.getSnapshot(); if (windows.focusPrimary()) return; if (snapshot.state === 'connected') void windows.showMain(snapshot.endpoint); else windows.showSettings(); }
 
 async function initialize() {
@@ -49,9 +54,9 @@ async function initialize() {
   localeService = new LocaleService({ systemLanguages: app.getPreferredSystemLanguages() });
   notificationService = new NotificationService({ settings: notificationSettings, getLocale: () => localeService.getLocale(), focusApp: focusFromNotification });
   watcher = new CompletionWatcher({ onCompletion: event => notificationService.show(event), onHostFrame: frame => localeService.handleHostFrame(frame) });
-  manager = new ConnectionManager({ startLocal: onUnexpectedExit => startLocalDsh({ executablePath: process.execPath, resourcesPath: process.resourcesPath, isPackaged: app.isPackaged, dshHome: path.join(app.getPath('userData'), '.dsh'), onUnexpectedExit }), startManagedSsh: (managedSettings, onUnexpectedExit) => startManagedSsh({ settings: managedSettings, onUnexpectedExit }) });
+  manager = new ConnectionManager({ startLocal: onUnexpectedExit => startLocalDsh({ executablePath: process.execPath, resourcesPath: process.resourcesPath, isPackaged: app.isPackaged, dshHome: path.join(app.getPath('userData'), '.dsh'), onUnexpectedExit }), startManagedSsh: (managedSettings, onUnexpectedExit) => startManagedSsh({ settings: managedSettings, onUnexpectedExit }), remoteDsh: { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus } });
   manager.setTargetSettings(settings);
-  manager.on('status', snapshot => { windows.sendStatus({ ...snapshot, settings, warning: settingsWarning }); syncIntegrations(snapshot); if (snapshot.state === 'error' && !snapshot.endpoint) windows.recoverToSettings(); });
+  manager.on('status', snapshot => { windows.sendStatus({ ...snapshot, settings, warning: settingsWarning }); syncIntegrations(snapshot); buildMenu(); if (snapshot.state === 'error' && !snapshot.endpoint) windows.recoverToSettings(); });
   localeService.on('change', locale => { buildMenu(); windows.sendNotificationLocale(locale, locale === 'en' ? notificationStringsEn : notificationStringsZh); });
   removeIpc = registerConnectionIpc({ actions, manager, windows, getSettings: () => settings, getWarning: () => settingsWarning, persistSettings });
   removeNotificationIpc = registerNotificationIpc({ windows, store: notificationStore, service: notificationService, getState: () => ({ settings: notificationSettings, warning: notificationWarning, locale: localeService.getLocale(), strings: localeService.getLocale() === 'en' ? notificationStringsEn : notificationStringsZh }), setState: value => { notificationSettings = value; notificationWarning = null; }, openSystemSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension') });

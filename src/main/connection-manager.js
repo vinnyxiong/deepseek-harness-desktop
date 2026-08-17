@@ -10,10 +10,11 @@ function externalTunnelHandle(localPort) {
 }
 
 class ConnectionManager extends EventEmitter {
-  constructor({ startLocal, startManagedSsh, health = { waitForDsh, probeDsh }, monitorIntervalMs = MONITOR_INTERVAL_MS, monitorFailureLimit = MONITOR_FAILURE_LIMIT }) {
+  constructor({ startLocal, startManagedSsh, remoteDsh = null, health = { waitForDsh, probeDsh }, monitorIntervalMs = MONITOR_INTERVAL_MS, monitorFailureLimit = MONITOR_FAILURE_LIMIT }) {
     super();
     this.startLocal = startLocal;
     this.startManagedSsh = startManagedSsh;
+    this.remoteDsh = remoteDsh;
     this.health = health;
     this.monitorIntervalMs = monitorIntervalMs;
     this.monitorFailureLimit = monitorFailureLimit;
@@ -26,10 +27,17 @@ class ConnectionManager extends EventEmitter {
     this.pendingCleanup = Promise.resolve();
     this.pendingCleanupHandle = null;
     this.ownedHandles = new Set();
+    this.remoteDshState = { running: false, pid: null };
     this.snapshot = { state: 'idle', mode: null, endpoint: null, error: null };
   }
 
-  getSnapshot() { return { ...this.snapshot, settings: this.settings }; }
+  getSnapshot() {
+    return {
+      ...this.snapshot,
+      settings: this.settings,
+      remoteDsh: this.snapshot.mode === 'managedSsh' ? { ...this.remoteDshState } : null,
+    };
+  }
   setTargetSettings(settings) { this.targetSettings = settings; if (!this.current) this.settings = settings; }
   setSnapshot(patch) { this.snapshot = { ...this.snapshot, ...patch }; this.emit('status', this.getSnapshot()); }
 
@@ -59,6 +67,17 @@ class ConnectionManager extends EventEmitter {
     if (settings.mode === 'local') {
       handle = await this.startLocal(details => this.handleUnexpectedOwnedExit(handle, details));
     } else if (settings.mode === 'managedSsh') {
+      // Auto-start remote DSH before creating the tunnel
+      if (this.remoteDsh && settings.managedSsh.autoStartRemoteDsh !== false) {
+        try {
+          const result = await this.remoteDsh.startRemoteDsh(settings.managedSsh);
+          this.remoteDshState = { running: true, pid: result.pid };
+        } catch (error) {
+          // Log but don't fail — user may have started DSH manually
+          console.error('Failed to auto-start remote DSH:', error.message);
+          this.remoteDshState = { running: false, pid: null };
+        }
+      }
       handle = await this.startManagedSsh(settings.managedSsh, details => this.handleUnexpectedOwnedExit(handle, details));
     } else {
       handle = externalTunnelHandle(settings.externalTunnel.localPort);
@@ -236,10 +255,63 @@ class ConnectionManager extends EventEmitter {
       throw error;
     }
     this.current = null;
+    // Auto-stop remote DSH after all tunnel handles are stopped
+    if (this.remoteDsh && this.settings?.mode === 'managedSsh' && this.settings?.managedSsh?.autoStopRemoteDsh !== false) {
+      try {
+        await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh);
+      } catch (error) {
+        console.error('Failed to auto-stop remote DSH:', error.message);
+      } finally {
+        this.remoteDshState = { running: false, pid: null };
+      }
+    }
     this.setSnapshot({ state: 'idle', mode: null, endpoint: null, error: null });
   }
 
   async dispose() { await this.operation.catch(() => {}); await this.disconnect(); }
+
+  async restartRemoteDsh() {
+    if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
+      throw new Error('Remote DSH management is only available in managed SSH mode');
+    }
+    if (this.snapshot.state !== 'connected') {
+      throw new Error('Cannot restart remote DSH while not connected');
+    }
+    try {
+      await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh);
+    } catch (error) {
+      // Ignore stop errors; the process might already be dead
+    }
+    const result = await this.remoteDsh.startRemoteDsh(this.settings.managedSsh);
+    this.remoteDshState = { running: true, pid: result.pid };
+    this.setSnapshot(this.snapshot);
+    return this.remoteDshState;
+  }
+
+  async stopRemoteDsh() {
+    if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
+      throw new Error('Remote DSH management is only available in managed SSH mode');
+    }
+    await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh);
+    this.remoteDshState = { running: false, pid: null };
+    this.setSnapshot(this.snapshot);
+    return this.remoteDshState;
+  }
+
+  async getRemoteDshStatus() {
+    if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
+      return null;
+    }
+    try {
+      const status = await this.remoteDsh.getRemoteDshStatus(this.settings.managedSsh);
+      this.remoteDshState = { running: status.running, pid: status.pid };
+      this.setSnapshot(this.snapshot);
+      return status;
+    } catch (error) {
+      this.remoteDshState = { running: false, pid: null };
+      return { running: false, pid: null };
+    }
+  }
 
   handleUnexpectedOwnedExit(handle, details) {
     if (!handle || this.current !== handle) return;
