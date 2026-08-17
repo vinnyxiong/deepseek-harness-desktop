@@ -37,7 +37,7 @@ function syncIntegrations(snapshot) {
   if (snapshot.state === 'connected' && snapshot.endpoint) { void watcher.setEndpoint(snapshot.endpoint); void localeService.setEndpoint(snapshot.endpoint); }
   else { watcher.stop(); localeService.clearEndpoint(); }
 }
-async function presentSnapshot(snapshot) { windows.sendStatus({ ...snapshot, warning: settingsWarning }); if (snapshot.state === 'connected') { await windows.showMain(snapshot.endpoint); windows.hideSettings(); } else if (snapshot.state === 'error') windows.recoverToSettings(); }
+async function presentSnapshot(snapshot) { windows.sendStatus({ ...snapshot, warning: settingsWarning }); if (snapshot.state === 'connected') { await windows.showMain(snapshot.endpoint); if (snapshot.mode !== 'managedSsh') windows.hideSettings(); } else if (snapshot.state === 'error') windows.recoverToSettings(); }
 async function connectCurrent() { try { await presentSnapshot(await manager.connect(settings)); } catch (error) { console.error('Failed to connect:', error); const snapshot = manager.getSnapshot(); if (!snapshot.endpoint) windows.recoverToSettings(); else windows.showSettings(); } }
 async function reconnectCurrent() { windows.showSettings(); await actions.run(connectCurrent); }
 async function persistSettings(next) { settings = next; manager.setTargetSettings(next); try { settings = await settingsStore.save(next); settingsWarning = null; return settings; } catch (error) { settingsWarning = `Connection preference not saved: ${error.message}`; throw error; } }

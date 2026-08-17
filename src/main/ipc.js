@@ -27,7 +27,9 @@ function registerConnectionIpc({ actions, manager, windows, getSettings, getWarn
 
   const present = async snapshot => {
     await windows.showMain(snapshot.endpoint);
-    windows.hideSettings();
+    // Keep settings window visible for managed SSH mode so the user
+    // can see remote DSH status and use the restart/stop controls.
+    if (snapshot.mode !== 'managedSsh') windows.hideSettings();
     return snapshot;
   };
 
