@@ -1,4 +1,4 @@
-const { app, Menu, dialog } = require('electron');
+const { app, Menu, dialog, shell } = require('electron');
 const notificationStringsZh = require('./locales/notification-settings.zh.json');
 const notificationStringsEn = require('./locales/notification-settings.en.json');
 const path = require('path');
@@ -24,7 +24,8 @@ app.setName('DeepSeek Harness');
 function buildMenu() {
   const t = key => translate(localeService?.getLocale() ?? 'zh', key); const template = [];
   if (process.platform === 'darwin') template.push({ label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { label: t('menu.connectionSettings'), accelerator: 'CommandOrControl+,', click: () => windows.showSettings() }, { label: t('menu.notificationSettings'), click: () => windows.showNotificationSettings() }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] });
-  template.push({ label: t('menu.connection'), submenu: [{ label: t('menu.connectionSettings'), accelerator: process.platform === 'darwin' ? undefined : 'CommandOrControl+,', click: () => windows.showSettings() }, { label: t('menu.notificationSettings'), click: () => windows.showNotificationSettings() }, { label: t('menu.reload'), click: () => void reconnectCurrent() }, { label: t('menu.disconnect'), click: () => void disconnectCurrent() }, { label: t('menu.useLocal'), click: () => void switchToLocal() }] });
+  template.push({ label: t('menu.connection'), submenu: [{ label: t('menu.reload'), click: () => void reconnectCurrent() }, { label: t('menu.disconnect'), click: () => void disconnectCurrent() }, { label: t('menu.useLocal'), click: () => void switchToLocal() }] });
+  if (process.platform !== 'darwin') template.push({ label: localeService?.getLocale() === 'en' ? 'Settings' : '设置', submenu: [{ label: t('menu.connectionSettings'), accelerator: 'CommandOrControl+,', click: () => windows.showSettings() }, { label: t('menu.notificationSettings'), click: () => windows.showNotificationSettings() }] });
   template.push({ label: t('menu.edit'), submenu: [{ role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] }, { label: t('menu.view'), submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { role: 'togglefullscreen' }] }, { label: t('menu.window'), submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }] });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
@@ -53,7 +54,7 @@ async function initialize() {
   manager.on('status', snapshot => { windows.sendStatus({ ...snapshot, settings, warning: settingsWarning }); syncIntegrations(snapshot); if (snapshot.state === 'error' && !snapshot.endpoint) windows.recoverToSettings(); });
   localeService.on('change', locale => { buildMenu(); windows.sendNotificationLocale(locale, locale === 'en' ? notificationStringsEn : notificationStringsZh); });
   removeIpc = registerConnectionIpc({ actions, manager, windows, getSettings: () => settings, getWarning: () => settingsWarning, persistSettings });
-  removeNotificationIpc = registerNotificationIpc({ windows, store: notificationStore, service: notificationService, getState: () => ({ settings: notificationSettings, warning: notificationWarning, locale: localeService.getLocale(), strings: localeService.getLocale() === 'en' ? notificationStringsEn : notificationStringsZh }), setState: value => { notificationSettings = value; notificationWarning = null; } });
+  removeNotificationIpc = registerNotificationIpc({ windows, store: notificationStore, service: notificationService, getState: () => ({ settings: notificationSettings, warning: notificationWarning, locale: localeService.getLocale(), strings: localeService.getLocale() === 'en' ? notificationStringsEn : notificationStringsZh }), setState: value => { notificationSettings = value; notificationWarning = null; }, openSystemSettings: () => shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension') });
   buildMenu(); await actions.run(connectCurrent);
 }
 

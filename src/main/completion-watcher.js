@@ -25,8 +25,13 @@ class CompletionWatcher {
       if (generation !== this.generation) { this.closeSockets(localSockets); return; }
       for (const item of baseline.items ?? []) {
         const existing = this.sessions.get(item.sessionId);
-        if (existing?.observedLive) continue;
-        this.sessions.set(item.sessionId, { sessionId: item.sessionId, running: item.running, cwd: item.cwd, title: item.projections?.values?.title ?? null, titleSeq: item.projections?.asOfSeq ?? -1, run: 0, reason: null, error: false });
+        if (existing?.running === true && item.running === false) {
+          existing.running = false;
+          existing.run = Math.max(1, existing.run);
+          if (generation === this.generation) this.emitAgent(existing);
+          continue;
+        }
+        this.sessions.set(item.sessionId, { sessionId: item.sessionId, running: item.running, cwd: item.cwd, title: item.projections?.values?.title ?? null, titleSeq: item.projections?.asOfSeq ?? -1, run: item.running ? Math.max(1, existing?.run ?? 1) : existing?.run ?? 0, reason: null, error: false });
       }
       this.active = true; this.attempt = 0;
     } catch { this.closeSockets(localSockets); if (generation === this.generation) this.scheduleReconnect(generation); }
@@ -39,7 +44,7 @@ class CompletionWatcher {
   emitAgent(session) { const key = `agent:${session.sessionId}:${session.run}`; if (this.dedupe.has(key)) return; this.dedupe.add(key); const status = session.error || session.reason === 'error' ? 'failed' : ['aborted', 'blocked', 'interrupted', 'max-tokens'].includes(session.reason) ? 'stopped' : 'completed'; this.onCompletion?.({ kind: 'agent', status, label: sessionLabel(session), sessionId: session.sessionId }); }
   handleHost(frame) {
     if (frame.type === 'host/session-added') Object.assign(this.ensureSession(frame.sessionId), { cwd: frame.cwd });
-    if (frame.type === 'host/session-removed') { const s = this.sessions.get(frame.sessionId); clearTimeout(s?.completionTimer); this.sessions.delete(frame.sessionId); this.jobs.delete(frame.sessionId); }
+    if (frame.type === 'host/session-removed') { const s = this.sessions.get(frame.sessionId); if (s?.completionTimer) { clearTimeout(s.completionTimer); this.emitAgent(s); } this.sessions.delete(frame.sessionId); this.jobs.delete(frame.sessionId); }
     if (frame.type === 'host/agent-error') this.ensureSession(frame.sessionId).error = true;
     if (frame.type !== 'host/session-status') return;
     const session = this.ensureSession(frame.sessionId); session.observedLive = true; const previous = session.running; session.running = frame.running;

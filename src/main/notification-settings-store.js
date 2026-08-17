@@ -9,7 +9,7 @@ const DEFAULT_NOTIFICATION_SETTINGS = Object.freeze({
   enabled: true,
   agentCompletions: true,
   backgroundJobs: Object.freeze({ completed: true, failed: true, killed: true }),
-  onlyWhenUnfocused: true,
+  onlyWhenUnfocused: false,
   playSound: true,
   focusOnClick: true,
 });

@@ -1,41 +1,15 @@
 const { Notification, BrowserWindow, app } = require('electron');
+const { EventEmitter } = require('events');
 const { translate } = require('./i18n');
-
-function clean(value, max = 120) { return String(value ?? '').replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, max); }
-class NotificationService {
-  constructor({ settings, getLocale, focusApp, NotificationImpl = Notification } = {}) {
-    this.settings = settings; this.getLocale = getLocale; this.focusApp = focusApp; this.NotificationImpl = NotificationImpl; this.active = new Set();
-  }
-  setSettings(settings) { this.settings = settings; }
-  shouldShow(kind, status) {
-    if (!this.settings.enabled) return false;
-    if (this.settings.onlyWhenUnfocused && BrowserWindow.getFocusedWindow()) return false;
-    if (kind === 'agent') return this.settings.agentCompletions;
-    return Boolean(this.settings.backgroundJobs[status]);
-  }
-  show(event, { force = false } = {}) {
-    if (!this.NotificationImpl.isSupported() || (!force && !this.shouldShow(event.kind, event.status))) return { supported: this.NotificationImpl.isSupported(), shown: false };
-    const locale = this.getLocale(); const title = translate(locale, `notify.${event.kind}.${event.status}`);
-    const body = clean(event.label) || translate(locale, 'notify.unnamed');
-    const notification = new this.NotificationImpl({ title, body, silent: !this.settings.playSound });
-    this.active.add(notification);
-    const release = () => this.active.delete(notification);
-    notification.on('close', release);
-    notification.on('failed', release);
-    const timer = setTimeout(release, 60_000); timer.unref?.();
-    if (this.settings.focusOnClick) notification.on('click', () => { app.focus({ steal: true }); this.focusApp?.(); });
-    notification.show(); return { supported: true, shown: true };
-  }
-  dispose() { for (const notification of this.active) try { notification.close(); } catch {} this.active.clear(); }
-  test(settings = this.settings) {
-    const previous = this.settings; this.settings = settings;
-    const locale = this.getLocale();
-    const supported = this.NotificationImpl.isSupported();
-    if (!supported) { this.settings = previous; return { supported: false, shown: false }; }
-    const notification = new this.NotificationImpl({ title: translate(locale, 'notify.test.title'), body: translate(locale, 'notify.test.body'), silent: !settings.playSound });
-    this.active.add(notification); const release = () => this.active.delete(notification); notification.on('close', release); notification.on('failed', release); const timer = setTimeout(release, 60_000); timer.unref?.();
-    if (settings.focusOnClick) notification.on('click', () => { app.focus({ steal: true }); this.focusApp?.(); });
-    notification.show(); this.settings = previous; return { supported: true, shown: true };
-  }
+function clean(value,max=120){return String(value??'').replace(/[\x00-\x1f\x7f]/g,' ').trim().slice(0,max)}
+class NotificationService extends EventEmitter{
+  constructor({settings,getLocale,focusApp,NotificationImpl=Notification,focusedWindow=()=>BrowserWindow.getFocusedWindow()}={}){super();Object.assign(this,{settings,getLocale,focusApp,NotificationImpl,focusedWindow});this.active=new Set();this.lastResult=null}
+  setSettings(settings){this.settings=settings}
+  suppression(kind,status){if(!this.settings.enabled)return'notifications-disabled';if(this.settings.onlyWhenUnfocused&&this.focusedWindow())return'app-focused';if(kind==='agent'&&!this.settings.agentCompletions)return'category-disabled';if(kind==='job'&&!this.settings.backgroundJobs[status])return'category-disabled';return null}
+  create(options,onClick){const n=new this.NotificationImpl(options);this.active.add(n);const release=()=>this.active.delete(n);n.on('close',release);n.on('failed',release);const timer=setTimeout(release,60000);timer.unref?.();if(onClick)n.on('click',onClick);return n}
+  record(result){this.lastResult={...result,time:Date.now()};this.emit('result',this.lastResult);return result}
+  show(event){const supported=this.NotificationImpl.isSupported();if(!supported)return this.record({supported:false,attempted:false,outcome:'unsupported',event});const reason=this.suppression(event.kind,event.status);if(reason)return this.record({supported:true,attempted:false,outcome:'suppressed',suppressionReason:reason,event});const locale=this.getLocale();const notification=this.create({title:translate(locale,`notify.${event.kind}.${event.status}`),body:clean(event.label)||translate(locale,'notify.unnamed'),silent:!this.settings.playSound},this.settings.focusOnClick?()=>{app.focus({steal:true});this.focusApp?.()}:null);notification.on('show',()=>this.record({supported:true,attempted:true,outcome:'shown',event}));notification.on('failed',(_e,error)=>this.record({supported:true,attempted:true,outcome:'failed',error:String(error||''),event}));notification.show();return this.record({supported:true,attempted:true,outcome:'attempted',event})}
+  async test(settings=this.settings,{timeoutMs=2000}={}){if(!this.NotificationImpl.isSupported())return this.record({supported:false,attempted:false,outcome:'unsupported'});const locale=this.getLocale();const notification=this.create({title:translate(locale,'notify.test.title'),body:translate(locale,'notify.test.body'),silent:!settings.playSound},settings.focusOnClick?()=>{app.focus({steal:true});this.focusApp?.()}:null);const result=await new Promise(resolve=>{let settled=false;const done=value=>{if(!settled){settled=true;resolve(value)}};notification.once('show',()=>done({supported:true,attempted:true,outcome:'shown'}));notification.once('failed',(_e,error)=>done({supported:true,attempted:true,outcome:'failed',error:String(error||'')}));setTimeout(()=>done({supported:true,attempted:true,outcome:'unconfirmed'}),timeoutMs).unref?.();notification.show()});return this.record(result)}
+  dispose(){for(const n of this.active)try{n.close()}catch{}this.active.clear()}
 }
-module.exports = { NotificationService, clean };
+module.exports={NotificationService,clean};
