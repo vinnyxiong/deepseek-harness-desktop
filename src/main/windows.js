@@ -20,7 +20,7 @@ function createWindowManager({ onMainWindowClosed } = {}) {
   }
   function showSettings() {
     if (settingsWindow && !settingsWindow.isDestroyed()) { settingsWindow.show(); settingsWindow.focus(); settingsWindow.webContents.send('connection:refresh'); return settingsWindow; }
-    settingsWindow = createSafeSettingsWindow({ title: 'DeepSeek Harness Connection', width: 720, height: 820, preload: path.join(__dirname, '..', 'preload', 'connection-settings.js'), file: settingsFilePath, onClosed: () => { settingsWindow = null; }, refreshChannel: 'connection:refresh' }); return settingsWindow;
+    settingsWindow = createSafeSettingsWindow({ title: 'DeepSeek Harness Connection', width: 860, height: 900, preload: path.join(__dirname, '..', 'preload', 'connection-settings.js'), file: settingsFilePath, onClosed: () => { settingsWindow = null; }, refreshChannel: 'connection:refresh' }); return settingsWindow;
   }
   function showNotificationSettings() {
     if (notificationSettingsWindow && !notificationSettingsWindow.isDestroyed()) { notificationSettingsWindow.show(); notificationSettingsWindow.focus(); notificationSettingsWindow.webContents.send('notification:refresh'); return notificationSettingsWindow; }

@@ -7,39 +7,152 @@
   <title>DeepSeek Harness 连接设置</title>
   <link rel="stylesheet" href="./index.css">
 </head>
-<body><main>
-<header><div class="logo">DSH</div><div><h1>连接设置</h1><p>连接本机 DSH，或通过 SSH 访问远程 DSH。</p></div></header>
-<section id="warning" class="message warning" hidden></section>
-<section id="status" class="message" aria-live="polite">正在读取设置…</section>
-<form id="connection-form">
-<label class="mode-card"><input type="radio" name="mode" value="local"><span><strong>本机 DSH</strong><small>由 App 启动和停止内置 DSH。</small></span></label>
-<label class="mode-card"><input type="radio" name="mode" value="managedSsh"><span><strong>自动管理 SSH 隧道</strong><small>App 自动运行 SSH，切换、断开或退出时自动关闭。</small></span></label>
-<label class="mode-card"><input type="radio" name="mode" value="external"><span><strong>已有外部 SSH 隧道</strong><small>连接你在终端中自行维护的端口转发。</small></span></label>
+<body>
+  <main>
+    <header class="page-hero">
+      <div class="brand-mark" aria-hidden="true">DSH</div>
+      <div class="hero-copy">
+        <p class="eyebrow">DEEPSEEK HARNESS</p>
+        <h1>连接设置</h1>
+        <p class="hero-description">选择运行方式，安全地连接本机或远程 DSH。</p>
+      </div>
+    </header>
 
-<section id="managed-fields" class="fields">
-  <div class="grid">
-    <label>SSH 主机<input id="ssh-host" type="text" maxlength="253" autocomplete="off"></label>
-    <label>SSH 用户<input id="ssh-username" type="text" maxlength="64" autocomplete="username"></label>
-    <label>SSH 端口<input id="ssh-port" type="number" min="1" max="65535"></label>
-    <label>本地转发端口<input id="managed-local-port" type="number" min="1" max="65535"></label>
-    <label>远程 DSH 端口<input id="remote-port" type="number" min="1" max="65535"></label>
-    <label>主机密钥<select id="host-key-policy"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
-  </div>
-  <label>私钥绝对路径（可选）<input id="identity-file" type="text" placeholder="/Users/name/.ssh/id_ed25519" autocomplete="off"></label>
-  <div class="remote-dsh-controls">
-    <label class="checkbox-label"><input id="auto-start-remote-dsh" type="checkbox"><span>连接时自动启动远程 DSH</span></label>
-    <label class="checkbox-label"><input id="auto-stop-remote-dsh" type="checkbox"><span>断开时自动停止远程 DSH</span></label>
-    <div id="remote-dsh-status" class="remote-dsh-status" hidden><span class="status-indicator"></span><span id="remote-dsh-status-text"></span></div>
-    <div class="remote-dsh-actions" id="remote-dsh-actions" hidden><button id="restart-remote-dsh" type="button">重启远程 DSH</button><button id="stop-remote-dsh" type="button">停止远程 DSH</button></div>
-  </div>
-  <div class="hint"><strong>将自动运行：</strong><code id="command-preview"></code><span>远程 DSH 必须已启动。App 不保存密码或私钥口令；请使用 ssh-agent、macOS 钥匙串或已配置密钥。</span></div>
-</section>
+    <section id="status" class="message status-message" aria-live="polite">正在读取设置…</section>
+    <section id="warning" class="message warning" aria-live="polite" hidden></section>
 
-<section id="external-fields" class="fields">
-  <label>已有隧道的本地端口<input id="external-local-port" type="number" min="1" max="65535"></label>
-  <p>App 将打开 <code id="external-preview"></code>，不会启动或停止外部 SSH。</p>
-</section>
+    <form id="connection-form" aria-busy="false">
+      <section class="surface mode-surface" aria-labelledby="connection-mode-title">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">连接方式</p>
+            <h2 id="connection-mode-title">选择 DSH 的运行位置</h2>
+          </div>
+          <p>之后仍可在这里切换或管理连接。</p>
+        </div>
 
-<div class="actions"><button type="submit" class="primary">保存并连接</button><button id="retry" type="button">重试</button><button id="disconnect" type="button">断开</button><button id="use-local" type="button">切换到本机</button></div>
-</form>
-</main><script src="./index.js"></script></body></html>
+        <fieldset class="mode-options">
+          <legend class="visually-hidden">连接方式</legend>
+          <label class="mode-card" data-mode="local">
+            <input type="radio" name="mode" value="local">
+            <span class="mode-card-icon local-icon" aria-hidden="true"></span>
+            <span class="mode-card-copy"><strong>本机 DSH</strong><small>由 App 启动和停止内置 DSH，适合本地开发。</small></span>
+            <span class="selection-dot" aria-hidden="true"></span>
+          </label>
+          <label class="mode-card" data-mode="managedSsh">
+            <input type="radio" name="mode" value="managedSsh">
+            <span class="mode-card-icon managed-icon" aria-hidden="true"></span>
+            <span class="mode-card-copy"><strong>自动管理 SSH 隧道</strong><small>App 自动建立、切换和关闭 SSH 端口转发。</small></span>
+            <span class="selection-dot" aria-hidden="true"></span>
+          </label>
+          <label class="mode-card" data-mode="external">
+            <input type="radio" name="mode" value="external">
+            <span class="mode-card-icon external-icon" aria-hidden="true"></span>
+            <span class="mode-card-copy"><strong>已有外部 SSH 隧道</strong><small>连接你在终端或其他工具中维护的本地端口。</small></span>
+            <span class="selection-dot" aria-hidden="true"></span>
+          </label>
+        </fieldset>
+      </section>
+
+      <section id="local-fields" class="fields surface local-overview" aria-labelledby="local-config-title">
+        <div class="configuration-intro">
+          <div class="inline-icon local-icon" aria-hidden="true"></div>
+          <div>
+            <p class="section-kicker">本机模式</p>
+            <h2 id="local-config-title">由 DeepSeek Harness 管理</h2>
+            <p>无需额外配置。保存后，App 会启动本机 DSH 并在断开连接时停止它。</p>
+          </div>
+        </div>
+        <div class="info-row"><span class="info-row-label">连接地址</span><code>由 App 自动分配</code></div>
+      </section>
+
+      <section id="managed-fields" class="fields managed-configuration" aria-labelledby="managed-config-title">
+        <div class="configuration-intro">
+          <div class="inline-icon managed-icon" aria-hidden="true"></div>
+          <div>
+            <p class="section-kicker">受管 SSH</p>
+            <h2 id="managed-config-title">远程连接配置</h2>
+            <p>App 只会使用你的 SSH 配置与认证代理，不会保存密码或私钥口令。</p>
+          </div>
+        </div>
+
+        <section class="configuration-section" aria-labelledby="ssh-server-title">
+          <div class="subsection-heading">
+            <div><span class="step-number">01</span><h3 id="ssh-server-title">SSH 服务器</h3></div>
+            <p>指定用于建立隧道的远程主机。</p>
+          </div>
+          <div class="grid">
+            <label><span>SSH 主机</span><input id="ssh-host" type="text" maxlength="253" autocomplete="off" placeholder="example.com"></label>
+            <label><span>SSH 用户</span><input id="ssh-username" type="text" maxlength="64" autocomplete="username" placeholder="username"></label>
+            <label><span>SSH 端口</span><input id="ssh-port" type="number" min="1" max="65535" inputmode="numeric"></label>
+          </div>
+        </section>
+
+        <section class="configuration-section" aria-labelledby="forwarding-title">
+          <div class="subsection-heading">
+            <div><span class="step-number">02</span><h3 id="forwarding-title">端口转发</h3></div>
+            <p>将本地端口安全地映射至远程 DSH。</p>
+          </div>
+          <div class="grid">
+            <label><span>本地转发端口</span><input id="managed-local-port" type="number" min="1" max="65535" inputmode="numeric"></label>
+            <label><span>远程 DSH 端口</span><input id="remote-port" type="number" min="1" max="65535" inputmode="numeric"></label>
+          </div>
+        </section>
+
+        <section class="configuration-section" aria-labelledby="security-title">
+          <div class="subsection-heading">
+            <div><span class="step-number">03</span><h3 id="security-title">认证与自动化</h3></div>
+            <p>沿用系统 SSH 能力，并定义远程服务的生命周期。</p>
+          </div>
+          <div class="grid security-grid">
+            <label><span>主机密钥验证</span><select id="host-key-policy"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
+            <label><span>私钥绝对路径 <em>可选</em></span><input id="identity-file" type="text" placeholder="/Users/name/.ssh/id_ed25519" autocomplete="off"></label>
+          </div>
+          <div class="automation-options">
+            <label class="checkbox-label"><input id="auto-start-remote-dsh" type="checkbox"><span><strong>连接时自动启动远程 DSH</strong><small>建立隧道前检查并启动远程服务。</small></span></label>
+            <label class="checkbox-label"><input id="auto-stop-remote-dsh" type="checkbox"><span><strong>断开时自动停止远程 DSH</strong><small>仅停止由此连接管理的远程服务。</small></span></label>
+          </div>
+        </section>
+
+        <section class="command-preview" aria-label="SSH 命令预览">
+          <div class="command-preview-heading"><span class="command-icon" aria-hidden="true">›_</span><strong>将自动运行的 SSH 命令</strong></div>
+          <code id="command-preview"></code>
+          <p>远程 DSH 必须已启动。请使用 ssh-agent、macOS 钥匙串或已配置的密钥完成认证。</p>
+        </section>
+
+        <section id="remote-dsh-controls" class="remote-dsh-controls" aria-labelledby="remote-dsh-title" hidden>
+          <div class="remote-dsh-header">
+            <div><p class="section-kicker">远程服务</p><h3 id="remote-dsh-title">远程 DSH 控制面板</h3></div>
+            <div id="remote-dsh-status" class="remote-dsh-status" aria-live="polite" hidden><span class="status-indicator"></span><span id="remote-dsh-status-text"></span></div>
+          </div>
+          <p>连接成功后，可以在不关闭 SSH 隧道的情况下管理远程 DSH。</p>
+          <div class="remote-dsh-actions" id="remote-dsh-actions" hidden><button id="restart-remote-dsh" type="button">重启远程 DSH</button><button id="stop-remote-dsh" class="danger-button" type="button">停止远程 DSH</button></div>
+        </section>
+      </section>
+
+      <section id="external-fields" class="fields surface external-overview" aria-labelledby="external-config-title">
+        <div class="configuration-intro">
+          <div class="inline-icon external-icon" aria-hidden="true"></div>
+          <div>
+            <p class="section-kicker">外部隧道</p>
+            <h2 id="external-config-title">连接已存在的本地转发</h2>
+            <p>App 只会访问这个本地端口，不会启动、修改或关闭外部 SSH 进程。</p>
+          </div>
+        </div>
+        <div class="external-connection-grid">
+          <label><span>已有隧道的本地端口</span><input id="external-local-port" type="number" min="1" max="65535" inputmode="numeric"></label>
+          <div class="endpoint-preview"><span>DSH 端点</span><code id="external-preview"></code></div>
+        </div>
+      </section>
+
+      <footer class="actions" aria-label="连接操作">
+        <button type="submit" class="primary"><span>保存并连接</span></button>
+        <button id="retry" type="button">重试</button>
+        <button id="disconnect" type="button">断开</button>
+        <button id="use-local" type="button">切换到本机</button>
+      </footer>
+    </form>
+  </main>
+  <script src="./index.js"></script>
+</body>
+</html>

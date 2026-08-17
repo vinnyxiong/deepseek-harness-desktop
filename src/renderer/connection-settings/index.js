@@ -3,6 +3,7 @@ const $ = selector => document.querySelector(selector);
 const form = $('#connection-form');
 const statusElement = $('#status');
 const warningElement = $('#warning');
+const localFields = $('#local-fields');
 const managedFields = $('#managed-fields');
 const externalFields = $('#external-fields');
 const host = $('#ssh-host');
@@ -21,6 +22,7 @@ const useLocalButton = $('#use-local');
 const autoStartRemoteDsh = $('#auto-start-remote-dsh');
 const autoStopRemoteDsh = $('#auto-stop-remote-dsh');
 const remoteDshStatus = $('#remote-dsh-status');
+const remoteDshControls = $('#remote-dsh-controls');
 const remoteDshStatusText = $('#remote-dsh-status-text');
 const remoteDshActions = $('#remote-dsh-actions');
 const restartRemoteDshBtn = $('#restart-remote-dsh');
@@ -34,15 +36,22 @@ function port(input, label) {
   if (!Number.isInteger(value) || value < 1 || value > 65535) throw new Error(`${label}必须是 1 到 65535 之间的整数。`);
   return value;
 }
-function setBusy(value) { busy = value; for (const element of form.querySelectorAll('button,input,select')) element.disabled = value; updateMode(); }
+function setBusy(value) {
+  busy = value;
+  form.setAttribute('aria-busy', String(value));
+  for (const element of form.querySelectorAll('button,input,select')) element.disabled = value;
+  updateMode();
+}
 function updateMode() {
   const selected = mode();
+  form.dataset.mode = selected;
+  localFields.hidden = selected !== 'local';
   managedFields.hidden = selected !== 'managedSsh';
   externalFields.hidden = selected !== 'external';
   const showControls = selected === 'managedSsh';
   autoStartRemoteDsh.closest('.checkbox-label').hidden = !showControls;
   autoStopRemoteDsh.closest('.checkbox-label').hidden = !showControls;
-  if (!showControls) { remoteDshStatus.hidden = true; remoteDshActions.hidden = true; }
+  if (!showControls) { remoteDshControls.hidden = true; remoteDshStatus.hidden = true; remoteDshActions.hidden = true; }
   if (!busy) for (const element of form.querySelectorAll('input,select,button')) element.disabled = false;
 }
 function updatePreview() {
@@ -60,11 +69,13 @@ function render(snapshot) {
     error: snapshot.error || '连接失败。',
   };
   statusElement.textContent = messages[snapshot.state] || snapshot.state;
-  statusElement.className = `message ${snapshot.state === 'error' ? 'error' : snapshot.state === 'connected' ? 'success' : ''}`;
+  statusElement.className = `message status-message ${snapshot.state === 'error' ? 'error' : snapshot.state === 'connected' ? 'success' : ''}`;
+  statusElement.dataset.connectionState = snapshot.state || 'idle';
   retryButton.hidden = snapshot.state !== 'error';
   disconnectButton.hidden = snapshot.state !== 'connected';
   useLocalButton.hidden = snapshot.state !== 'error' || snapshot.mode === 'local';
   const showRemoteDsh = snapshot.mode === 'managedSsh' && snapshot.state === 'connected';
+  remoteDshControls.hidden = !showRemoteDsh;
   remoteDshStatus.hidden = !showRemoteDsh;
   remoteDshActions.hidden = !showRemoteDsh;
   if (showRemoteDsh && snapshot.remoteDsh) {
