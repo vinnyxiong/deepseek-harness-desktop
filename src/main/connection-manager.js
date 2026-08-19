@@ -327,6 +327,18 @@ class ConnectionManager extends EventEmitter {
     return callDsh(this.current.endpoint, 'settings.describe', {});
   }
 
+  async updateRemoteDsh() {
+    if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
+      throw new Error('Remote DSH management is only available in managed SSH mode');
+    }
+    if (this.snapshot.state !== 'connected') {
+      throw new Error('Cannot update remote DSH while not connected');
+    }
+    const result = await this.remoteDsh.updateRemoteDsh(this.settings.managedSsh);
+    this.setSnapshot(this.snapshot);
+    return result;
+  }
+
   async getRemoteDshStatus() {
     if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
       return null;

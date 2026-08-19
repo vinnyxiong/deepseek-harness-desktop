@@ -96,9 +96,9 @@ async function getRemoteDshStatus(settings, opts) {
 
 async function getRemoteDshVersion(settings, opts) {
   const port = settings.remotePort;
-  // Read the running DSH process's PATH from /proc/PID/environ so we can
-  // find dsh even in non-interactive SSH sessions that don't source rc files.
-  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; PROC_PATH=$(xargs -0 -L1 -a /proc/$PID/environ 2>/dev/null | grep '^PATH=' | cut -d= -f2-); VER=$(PATH="$PROC_PATH" dsh --version 2>/dev/null || echo 'unknown'); echo "VERSION:$VER"; else echo "PROCESS:not-running"; echo "VERSION:DSH not running"; fi`;
+  // Use dsh-web version script which exists on the remote machine and
+  // doesn't require shell rc files to be sourced.
+  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; else echo "PROCESS:not-running"; fi; VER=$(dsh-web version 2>/dev/null || echo 'unknown'); echo "VERSION:$VER"`;
   const { stdout } = await runRemoteCommand(settings, command, opts);
   const lines = stdout.split('\n');
   let version = '';
@@ -127,4 +127,10 @@ async function getRemoteDshProcessDetails(settings, opts) {
   return { output: stdout };
 }
 
-module.exports = { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh };
+async function updateRemoteDsh(settings, opts) {
+  const command = `dsh-web update 2>&1`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 120_000 });
+  return { output: stdout };
+}
+
+module.exports = { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, updateRemoteDsh };

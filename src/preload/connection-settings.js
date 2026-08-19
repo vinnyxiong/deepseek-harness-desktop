@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('desktopConnection', Object.freeze({
   getRemoteDshLog: () => ipcRenderer.invoke('connection:remote-dsh-log'),
   getRemoteDshProcessDetails: () => ipcRenderer.invoke('connection:remote-dsh-process-details'),
   getRemoteDshConfig: () => ipcRenderer.invoke('connection:remote-dsh-config'),
+  updateRemoteDsh: () => ipcRenderer.invoke('connection:remote-dsh-update'),
   onRefresh(callback) {
     if (typeof callback !== 'function') throw new TypeError('Refresh callback must be a function');
     const listener = () => callback();

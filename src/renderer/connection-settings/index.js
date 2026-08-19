@@ -31,6 +31,7 @@ const checkVersionBtn = $('#check-version-remote-dsh');
 const processDetailsBtn = $('#process-details-remote-dsh');
 const viewLogBtn = $('#view-log-remote-dsh');
 const viewConfigBtn = $('#view-config-remote-dsh');
+const updateRemoteDshBtn = $('#update-remote-dsh');
 const remoteDshInfo = $('#remote-dsh-info');
 const remoteDshVersionText = $('#remote-dsh-version-text');
 const remoteDshDetails = $('#remote-dsh-details');
@@ -39,6 +40,8 @@ const remoteDshLog = $('#remote-dsh-log');
 const remoteDshLogText = $('#remote-dsh-log-text');
 const remoteDshConfig = $('#remote-dsh-config');
 const remoteDshConfigText = $('#remote-dsh-config-text');
+const remoteDshUpdate = $('#remote-dsh-update');
+const remoteDshUpdateText = $('#remote-dsh-update-text');
 const remoteDshActionsSecondary = $('#remote-dsh-actions-secondary');
 let currentState = null;
 let busy = false;
@@ -64,7 +67,7 @@ function updateMode() {
   const showControls = selected === 'managedSsh';
   autoStartRemoteDsh.closest('.checkbox-label').hidden = !showControls;
   autoStopRemoteDsh.closest('.checkbox-label').hidden = !showControls;
-  if (!showControls) { remoteDshControls.hidden = true; remoteDshStatus.hidden = true; remoteDshActions.hidden = true; remoteDshActionsSecondary.hidden = true; remoteDshInfo.hidden = true; remoteDshDetails.hidden = true; remoteDshLog.hidden = true; remoteDshConfig.hidden = true; }
+  if (!showControls) { remoteDshControls.hidden = true; remoteDshStatus.hidden = true; remoteDshActions.hidden = true; remoteDshActionsSecondary.hidden = true; remoteDshInfo.hidden = true; remoteDshDetails.hidden = true; remoteDshLog.hidden = true; remoteDshConfig.hidden = true; remoteDshUpdate.hidden = true; }
   if (!busy) for (const element of form.querySelectorAll('input,select,button')) element.disabled = false;
 }
 function updatePreview() {
@@ -92,7 +95,7 @@ function render(snapshot) {
   remoteDshStatus.hidden = !showRemoteDsh;
   remoteDshActions.hidden = !showRemoteDsh;
   remoteDshActionsSecondary.hidden = !showRemoteDsh;
-  if (!showRemoteDsh) { remoteDshInfo.hidden = true; remoteDshDetails.hidden = true; remoteDshLog.hidden = true; remoteDshConfig.hidden = true; }
+  if (!showRemoteDsh) { remoteDshInfo.hidden = true; remoteDshDetails.hidden = true; remoteDshLog.hidden = true; remoteDshConfig.hidden = true; remoteDshUpdate.hidden = true; }
   if (showRemoteDsh && snapshot.remoteDsh) {
     if (snapshot.remoteDsh.running) {
       remoteDshStatusText.textContent = `远程 DSH 运行中 (PID: ${snapshot.remoteDsh.pid})`;
@@ -192,6 +195,16 @@ viewConfigBtn.addEventListener('click', async () => {
     remoteDshConfig.hidden = false;
     remoteDshConfigText.textContent = JSON.stringify(result, null, 2);
     remoteDshConfig.open = true;
+  } catch (error) { showError(error); }
+  finally { setBusy(false); }
+});
+updateRemoteDshBtn.addEventListener('click', async () => {
+  if (busy) return; setBusy(true);
+  try {
+    remoteDshUpdate.hidden = false;
+    remoteDshUpdateText.textContent = '正在更新远程 DSH，请稍候...';
+    const result = await api.updateRemoteDsh();
+    remoteDshUpdateText.textContent = result.output;
   } catch (error) { showError(error); }
   finally { setBusy(false); }
 });

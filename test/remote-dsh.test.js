@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
-const { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh } = require('../src/main/remote-dsh');
+const { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, updateRemoteDsh } = require('../src/main/remote-dsh');
 
 const settings = {
   host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
@@ -135,16 +135,16 @@ test('SSH command uses spawn with shell:false', async () => {
 });
 
 test('getRemoteDshVersion returns version when process is running', async () => {
-  const stdout = 'PROCESS:7777\nVERSION:0.1.0-rc.6';
+  const stdout = 'PROCESS:7777\nVERSION:dsh-web 1.2.0';
   const result = await getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput(stdout) });
-  assert.equal(result.version, '0.1.0-rc.6');
+  assert.equal(result.version, 'dsh-web 1.2.0');
   assert.ok(result.output.includes('7777'));
 });
 
 test('getRemoteDshVersion handles not-running state', async () => {
-  const stdout = 'PROCESS:not-running\nVERSION:DSH not running';
+  const stdout = 'PROCESS:not-running\nVERSION:dsh-web 1.2.0';
   const result = await getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput(stdout) });
-  assert.equal(result.version, 'DSH not running');
+  assert.equal(result.version, 'dsh-web 1.2.0');
   assert.equal(result.output, '远程 DSH 未运行');
 });
 
@@ -191,6 +191,19 @@ test('getRemoteDshLog shows not-running when DSH is down', async () => {
 test('getRemoteDshLog throws on SSH failure', async () => {
   await assert.rejects(
     () => getRemoteDshLog(settings, { spawnImpl: () => spawnWithOutput('', 1) }),
+    /SSH command exited/,
+  );
+});
+
+test('updateRemoteDsh runs dsh-web update', async () => {
+  const stdout = '正在从 CDN 下载最新版本...\n当前版本：1.2.0\n最新版本：1.3.0\n已更新到 1.3.0。';
+  const result = await updateRemoteDsh(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.ok(result.output.includes('已更新到 1.3.0'));
+});
+
+test('updateRemoteDsh throws on SSH failure', async () => {
+  await assert.rejects(
+    () => updateRemoteDsh(settings, { spawnImpl: () => spawnWithOutput('', 1) }),
     /SSH command exited/,
   );
 });
