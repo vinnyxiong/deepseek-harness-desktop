@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
-const { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh } = require('../src/main/remote-dsh');
+const { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh } = require('../src/main/remote-dsh');
 
 const settings = {
   host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
@@ -134,24 +134,43 @@ test('SSH command uses spawn with shell:false', async () => {
   assert.equal(capturedOptions.env.SSH_ASKPASS_REQUIRE, 'never');
 });
 
-test('getRemoteDshVersion returns version and process info', async () => {
-  const stdout = 'VERSION:0.1.0-rc.6\nPROCESS:7777\n7777 1 0.5 1.2 01:30:00 123456 dsh web --port 3080';
+test('getRemoteDshVersion returns version when process is running', async () => {
+  const stdout = 'PROCESS:7777\nVERSION:0.1.0-rc.6';
   const result = await getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput(stdout) });
   assert.equal(result.version, '0.1.0-rc.6');
   assert.ok(result.output.includes('7777'));
-  assert.ok(result.output.includes('0.5'));
 });
 
 test('getRemoteDshVersion handles not-running state', async () => {
-  const stdout = 'VERSION:0.1.0-rc.6\nPROCESS:not-running';
+  const stdout = 'PROCESS:not-running\nVERSION:DSH not running';
   const result = await getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput(stdout) });
-  assert.equal(result.version, '0.1.0-rc.6');
+  assert.equal(result.version, 'DSH not running');
   assert.equal(result.output, '远程 DSH 未运行');
 });
 
 test('getRemoteDshVersion throws on SSH failure', async () => {
   await assert.rejects(
     () => getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput('', 255) }),
+    /SSH command exited/,
+  );
+});
+
+test('getRemoteDshProcessDetails returns process info', async () => {
+  const stdout = 'PID:7777\n7777 1 0.5 1.2 01:30:00 123456 dsh web --port 3080';
+  const result = await getRemoteDshProcessDetails(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.ok(result.output.includes('7777'));
+  assert.ok(result.output.includes('0.5'));
+});
+
+test('getRemoteDshProcessDetails shows not-running when DSH is down', async () => {
+  const stdout = 'DSH not running on port 3080';
+  const result = await getRemoteDshProcessDetails(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.ok(result.output.includes('not running'));
+});
+
+test('getRemoteDshProcessDetails throws on SSH failure', async () => {
+  await assert.rejects(
+    () => getRemoteDshProcessDetails(settings, { spawnImpl: () => spawnWithOutput('', 1) }),
     /SSH command exited/,
   );
 });

@@ -1,5 +1,6 @@
 const { EventEmitter } = require('events');
 const { waitForDsh, probeDsh } = require('./dsh-health');
+const { callDsh } = require('./dsh-api-client');
 
 const MONITOR_INTERVAL_MS = 5_000;
 const MONITOR_FAILURE_LIMIT = 3;
@@ -310,6 +311,20 @@ class ConnectionManager extends EventEmitter {
       throw new Error('Remote DSH management is only available in managed SSH mode');
     }
     return this.remoteDsh.getRemoteDshLog(this.settings.managedSsh);
+  }
+
+  async getRemoteDshProcessDetails() {
+    if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
+      throw new Error('Remote DSH management is only available in managed SSH mode');
+    }
+    return this.remoteDsh.getRemoteDshProcessDetails(this.settings.managedSsh);
+  }
+
+  async getRemoteDshConfig() {
+    if (!this.current?.endpoint || this.snapshot.state !== 'connected') {
+      throw new Error('DSH is not connected');
+    }
+    return callDsh(this.current.endpoint, 'settings.describe', {});
   }
 
   async getRemoteDshStatus() {

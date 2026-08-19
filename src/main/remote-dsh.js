@@ -96,10 +96,9 @@ async function getRemoteDshStatus(settings, opts) {
 
 async function getRemoteDshVersion(settings, opts) {
   const port = settings.remotePort;
-  // Non-interactive SSH sessions don't source .zshrc/.bashrc, so dsh may not
-  // be on PATH. Use $SHELL -ic to run in the user's interactive shell which
-  // loads rc files, with stderr suppressed to filter out rc-file noise.
-  const command = `VER=$($SHELL -ic 'dsh --version' 2>/dev/null || echo 'unknown'); echo "VERSION:$VER"; PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; else echo "PROCESS:not-running"; fi`;
+  // Read the running DSH process's PATH from /proc/PID/environ so we can
+  // find dsh even in non-interactive SSH sessions that don't source rc files.
+  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; PROC_PATH=$(xargs -0 -L1 -a /proc/$PID/environ 2>/dev/null | grep '^PATH=' | cut -d= -f2-); VER=$(PATH="$PROC_PATH" dsh --version 2>/dev/null || echo 'unknown'); echo "VERSION:$VER"; else echo "PROCESS:not-running"; echo "VERSION:DSH not running"; fi`;
   const { stdout } = await runRemoteCommand(settings, command, opts);
   const lines = stdout.split('\n');
   let version = '';
@@ -108,10 +107,8 @@ async function getRemoteDshVersion(settings, opts) {
     if (line.startsWith('VERSION:')) version = line.slice(8);
     else if (line.startsWith('PROCESS:')) processInfo = line.slice(8);
   }
-  const processMarker = lines.findIndex(l => l.startsWith('PROCESS:'));
-  const processLines = processMarker >= 0 ? lines.slice(processMarker + 1).filter(l => l.trim()) : [];
   const output = processInfo !== 'not-running'
-    ? `进程 PID: ${processInfo}\n${processLines.join('\n')}`
+    ? `进程 PID: ${processInfo}`
     : '远程 DSH 未运行';
   return { version, output };
 }
@@ -123,4 +120,11 @@ async function getRemoteDshLog(settings, opts) {
   return { output: stdout };
 }
 
-module.exports = { buildRemoteSshArgs, getRemoteDshStatus, getRemoteDshLog, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh };
+async function getRemoteDshProcessDetails(settings, opts) {
+  const port = settings.remotePort;
+  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PID:$PID"; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; else echo "DSH not running on port ${port}"; fi`;
+  const { stdout } = await runRemoteCommand(settings, command, opts);
+  return { output: stdout };
+}
+
+module.exports = { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh };

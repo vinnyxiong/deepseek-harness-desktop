@@ -127,16 +127,26 @@
           </div>
           <p>连接成功后，可以在不关闭 SSH 隧道的情况下管理远程 DSH。</p>
           <div class="remote-dsh-actions" id="remote-dsh-actions" hidden><button id="restart-remote-dsh" type="button">重启远程 DSH</button><button id="stop-remote-dsh" class="danger-button" type="button">停止远程 DSH</button></div>
-          <div class="remote-dsh-actions-secondary" id="remote-dsh-actions-secondary" hidden><button id="check-version-remote-dsh" type="button">查看版本</button><button id="view-log-remote-dsh" type="button">查看日志</button></div>
+          <div class="remote-dsh-actions-secondary" id="remote-dsh-actions-secondary" hidden>
+            <button id="check-version-remote-dsh" type="button">查看版本</button>
+            <button id="process-details-remote-dsh" type="button">进程详情</button>
+            <button id="view-log-remote-dsh" type="button">查看日志</button>
+            <button id="view-config-remote-dsh" type="button">查看配置</button>
+          </div>
           <div class="remote-dsh-info" id="remote-dsh-info" hidden>
             <div class="info-row"><span class="info-row-label">远程 DSH 版本</span><code id="remote-dsh-version-text">--</code></div>
           </div>
-          <div class="remote-dsh-details" id="remote-dsh-details" hidden>
+          <details class="remote-dsh-details" id="remote-dsh-details" hidden>
+            <summary>进程详情</summary>
             <pre id="remote-dsh-details-text"></pre>
-          </div>
+          </details>
           <details class="remote-dsh-log" id="remote-dsh-log" hidden>
             <summary>远程 DSH 日志</summary>
             <pre id="remote-dsh-log-text"></pre>
+          </details>
+          <details class="remote-dsh-config" id="remote-dsh-config" hidden>
+            <summary>远程 DSH 配置</summary>
+            <pre id="remote-dsh-config-text"></pre>
           </details>
         </section>
       </section>
