@@ -298,6 +298,20 @@ class ConnectionManager extends EventEmitter {
     return this.remoteDshState;
   }
 
+  async getRemoteDshVersion() {
+    if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
+      throw new Error('Remote DSH management is only available in managed SSH mode');
+    }
+    return this.remoteDsh.getRemoteDshVersion(this.settings.managedSsh);
+  }
+
+  async getRemoteDshLog() {
+    if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
+      throw new Error('Remote DSH management is only available in managed SSH mode');
+    }
+    return this.remoteDsh.getRemoteDshLog(this.settings.managedSsh);
+  }
+
   async getRemoteDshStatus() {
     if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
       return null;

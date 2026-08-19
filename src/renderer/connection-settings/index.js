@@ -27,6 +27,15 @@ const remoteDshStatusText = $('#remote-dsh-status-text');
 const remoteDshActions = $('#remote-dsh-actions');
 const restartRemoteDshBtn = $('#restart-remote-dsh');
 const stopRemoteDshBtn = $('#stop-remote-dsh');
+const checkVersionBtn = $('#check-version-remote-dsh');
+const viewLogBtn = $('#view-log-remote-dsh');
+const remoteDshInfo = $('#remote-dsh-info');
+const remoteDshVersionText = $('#remote-dsh-version-text');
+const remoteDshDetails = $('#remote-dsh-details');
+const remoteDshDetailsText = $('#remote-dsh-details-text');
+const remoteDshLog = $('#remote-dsh-log');
+const remoteDshLogText = $('#remote-dsh-log-text');
+const remoteDshActionsSecondary = $('#remote-dsh-actions-secondary');
 let currentState = null;
 let busy = false;
 
@@ -51,7 +60,7 @@ function updateMode() {
   const showControls = selected === 'managedSsh';
   autoStartRemoteDsh.closest('.checkbox-label').hidden = !showControls;
   autoStopRemoteDsh.closest('.checkbox-label').hidden = !showControls;
-  if (!showControls) { remoteDshControls.hidden = true; remoteDshStatus.hidden = true; remoteDshActions.hidden = true; }
+  if (!showControls) { remoteDshControls.hidden = true; remoteDshStatus.hidden = true; remoteDshActions.hidden = true; remoteDshActionsSecondary.hidden = true; remoteDshInfo.hidden = true; remoteDshDetails.hidden = true; remoteDshLog.hidden = true; }
   if (!busy) for (const element of form.querySelectorAll('input,select,button')) element.disabled = false;
 }
 function updatePreview() {
@@ -78,6 +87,8 @@ function render(snapshot) {
   remoteDshControls.hidden = !showRemoteDsh;
   remoteDshStatus.hidden = !showRemoteDsh;
   remoteDshActions.hidden = !showRemoteDsh;
+  remoteDshActionsSecondary.hidden = !showRemoteDsh;
+  if (!showRemoteDsh) { remoteDshInfo.hidden = true; remoteDshDetails.hidden = true; remoteDshLog.hidden = true; }
   if (showRemoteDsh && snapshot.remoteDsh) {
     if (snapshot.remoteDsh.running) {
       remoteDshStatusText.textContent = `远程 DSH 运行中 (PID: ${snapshot.remoteDsh.pid})`;
@@ -141,4 +152,25 @@ disconnectButton.addEventListener('click', () => void perform(() => api.disconne
 useLocalButton.addEventListener('click', () => { form.elements.mode.value = 'local'; updateMode(); void perform(() => api.useLocal()); });
 restartRemoteDshBtn.addEventListener('click', () => void perform(() => api.restartRemoteDsh()));
 stopRemoteDshBtn.addEventListener('click', () => void perform(() => api.stopRemoteDsh()));
+checkVersionBtn.addEventListener('click', async () => {
+  if (busy) return; setBusy(true);
+  try {
+    const result = await api.getRemoteDshVersion();
+    remoteDshInfo.hidden = false;
+    remoteDshVersionText.textContent = result.version;
+    remoteDshDetails.hidden = false;
+    remoteDshDetailsText.textContent = result.output;
+  } catch (error) { showError(error); }
+  finally { setBusy(false); }
+});
+viewLogBtn.addEventListener('click', async () => {
+  if (busy) return; setBusy(true);
+  try {
+    const result = await api.getRemoteDshLog();
+    remoteDshLog.hidden = false;
+    remoteDshLogText.textContent = result.output;
+    remoteDshLog.open = true;
+  } catch (error) { showError(error); }
+  finally { setBusy(false); }
+});
 api.onStatus(render); api.onRefresh(() => void refreshState()); void refreshState();

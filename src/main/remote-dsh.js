@@ -94,4 +94,30 @@ async function getRemoteDshStatus(settings, opts) {
   }
 }
 
-module.exports = { buildRemoteSshArgs, getRemoteDshStatus, startRemoteDsh, stopRemoteDsh };
+async function getRemoteDshVersion(settings, opts) {
+  const port = settings.remotePort;
+  const command = `VER=$(dsh --version 2>&1); echo "VERSION:$VER"; PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; else echo "PROCESS:not-running"; fi`;
+  const { stdout } = await runRemoteCommand(settings, command, opts);
+  const lines = stdout.split('\n');
+  let version = '';
+  let processInfo = '';
+  for (const line of lines) {
+    if (line.startsWith('VERSION:')) version = line.slice(8);
+    else if (line.startsWith('PROCESS:')) processInfo = line.slice(8);
+  }
+  const processMarker = lines.findIndex(l => l.startsWith('PROCESS:'));
+  const processLines = processMarker >= 0 ? lines.slice(processMarker + 1).filter(l => l.trim()) : [];
+  const output = processInfo !== 'not-running'
+    ? `进程 PID: ${processInfo}\n${processLines.join('\n')}`
+    : '远程 DSH 未运行';
+  return { version, output };
+}
+
+async function getRemoteDshLog(settings, opts) {
+  const port = settings.remotePort;
+  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "=== DSH PID: $PID ==="; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; echo ""; echo "=== RECENT LOGS (last 50 lines) ==="; tail -n 50 /proc/$PID/fd/1 2>/dev/null || echo "(cannot read process stdout)"; else echo "DSH not running on port ${port}"; fi`;
+  const { stdout } = await runRemoteCommand(settings, command, opts);
+  return { output: stdout };
+}
+
+module.exports = { buildRemoteSshArgs, getRemoteDshStatus, getRemoteDshLog, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh };

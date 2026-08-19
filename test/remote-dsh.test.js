@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
-const { buildRemoteSshArgs, getRemoteDshStatus, startRemoteDsh, stopRemoteDsh } = require('../src/main/remote-dsh');
+const { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh } = require('../src/main/remote-dsh');
 
 const settings = {
   host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
@@ -132,4 +132,46 @@ test('SSH command uses spawn with shell:false', async () => {
   });
   assert.equal(capturedOptions.shell, false);
   assert.equal(capturedOptions.env.SSH_ASKPASS_REQUIRE, 'never');
+});
+
+test('getRemoteDshVersion returns version and process info', async () => {
+  const stdout = 'VERSION:0.1.0-rc.6\nPROCESS:7777\n7777 1 0.5 1.2 01:30:00 123456 dsh web --port 3080';
+  const result = await getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.equal(result.version, '0.1.0-rc.6');
+  assert.ok(result.output.includes('7777'));
+  assert.ok(result.output.includes('0.5'));
+});
+
+test('getRemoteDshVersion handles not-running state', async () => {
+  const stdout = 'VERSION:0.1.0-rc.6\nPROCESS:not-running';
+  const result = await getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.equal(result.version, '0.1.0-rc.6');
+  assert.equal(result.output, '远程 DSH 未运行');
+});
+
+test('getRemoteDshVersion throws on SSH failure', async () => {
+  await assert.rejects(
+    () => getRemoteDshVersion(settings, { spawnImpl: () => spawnWithOutput('', 255) }),
+    /SSH command exited/,
+  );
+});
+
+test('getRemoteDshLog returns log content', async () => {
+  const stdout = '=== DSH PID: 7777 ===\n7777 1 0.5 1.2 01:30:00 123456 dsh web\n\n=== RECENT LOGS (last 50 lines) ===\n[2026-08-19] Server started on port 3080';
+  const result = await getRemoteDshLog(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.ok(result.output.includes('DSH PID: 7777'));
+  assert.ok(result.output.includes('Server started'));
+});
+
+test('getRemoteDshLog shows not-running when DSH is down', async () => {
+  const stdout = 'DSH not running on port 3080';
+  const result = await getRemoteDshLog(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.ok(result.output.includes('not running'));
+});
+
+test('getRemoteDshLog throws on SSH failure', async () => {
+  await assert.rejects(
+    () => getRemoteDshLog(settings, { spawnImpl: () => spawnWithOutput('', 1) }),
+    /SSH command exited/,
+  );
 });

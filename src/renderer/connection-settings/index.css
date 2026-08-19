@@ -427,6 +427,71 @@ select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary
 
 .remote-dsh-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
 
+.remote-dsh-actions-secondary { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+
+.remote-dsh-info {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.remote-dsh-info .info-row { margin-top: 0; }
+
+.remote-dsh-details {
+  margin-top: 10px;
+}
+
+.remote-dsh-details pre {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+.remote-dsh-log {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.remote-dsh-log summary {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 680;
+  cursor: pointer;
+  user-select: none;
+}
+
+.remote-dsh-log pre {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #252542;
+  color: #f5f5ff;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .remote-dsh-log pre { background: #10121d; }
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

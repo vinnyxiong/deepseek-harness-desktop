@@ -9,6 +9,8 @@ const CHANNELS = [
   'connection:use-local',
   'connection:remote-dsh-restart',
   'connection:remote-dsh-stop',
+  'connection:remote-dsh-version',
+  'connection:remote-dsh-log',
 ];
 
 function registerConnectionIpc({ actions, manager, windows, getSettings, getWarning, persistSettings }) {
@@ -108,6 +110,16 @@ function registerConnectionIpc({ actions, manager, windows, getSettings, getWarn
       await manager.stopRemoteDsh();
       return manager.getSnapshot();
     });
+  });
+
+  ipcMain.handle('connection:remote-dsh-version', event => {
+    authorize(event);
+    return runTransaction(() => manager.getRemoteDshVersion());
+  });
+
+  ipcMain.handle('connection:remote-dsh-log', event => {
+    authorize(event);
+    return runTransaction(() => manager.getRemoteDshLog());
   });
 
   return () => {
