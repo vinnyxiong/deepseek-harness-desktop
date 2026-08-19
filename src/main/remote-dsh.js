@@ -96,7 +96,10 @@ async function getRemoteDshStatus(settings, opts) {
 
 async function getRemoteDshVersion(settings, opts) {
   const port = settings.remotePort;
-  const command = `VER=$(dsh --version 2>&1); echo "VERSION:$VER"; PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; else echo "PROCESS:not-running"; fi`;
+  // Non-interactive SSH sessions don't source .zshrc/.bashrc, so dsh may not
+  // be on PATH. Use $SHELL -ic to run in the user's interactive shell which
+  // loads rc files, with stderr suppressed to filter out rc-file noise.
+  const command = `VER=$($SHELL -ic 'dsh --version' 2>/dev/null || echo 'unknown'); echo "VERSION:$VER"; PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; else echo "PROCESS:not-running"; fi`;
   const { stdout } = await runRemoteCommand(settings, command, opts);
   const lines = stdout.split('\n');
   let version = '';
