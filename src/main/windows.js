@@ -139,6 +139,12 @@ function createWindowManager() {
     }
   }
 
+  function toggleSidebar() {
+    if (hostManagerWindow && !hostManagerWindow.isDestroyed()) {
+      hostManagerWindow.webContents.send('host:toggle-sidebar');
+    }
+  }
+
   return {
     showHostManager,
     showNotificationSettings,
@@ -152,6 +158,7 @@ function createWindowManager() {
     isNotificationSettingsUrl: url => url === notificationPageUrl,
     sendHostStatus,
     sendNotificationLocale,
+    toggleSidebar,
   };
 }
 

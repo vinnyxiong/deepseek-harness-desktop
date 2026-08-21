@@ -24,4 +24,9 @@ contextBridge.exposeInMainWorld('desktopHosts', Object.freeze({
     ipcRenderer.on('host:status', listener);
     return () => ipcRenderer.removeListener('host:status', listener);
   },
+  onToggleSidebar(callback) {
+    const listener = () => callback();
+    ipcRenderer.on('host:toggle-sidebar', listener);
+    return () => ipcRenderer.removeListener('host:toggle-sidebar', listener);
+  },
 }));

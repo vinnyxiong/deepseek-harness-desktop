@@ -7,6 +7,7 @@
   "menu.useLocal": "Use Local DSH",
   "menu.edit": "Edit",
   "menu.view": "View",
+  "menu.toggleSidebar": "Toggle Sidebar",
   "menu.window": "Window",
   "notify.agent.completed": "Agent completed",
   "notify.agent.failed": "Agent failed",

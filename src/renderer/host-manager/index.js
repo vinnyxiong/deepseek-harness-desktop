@@ -2,6 +2,8 @@ const api = window.desktopHosts;
 const $ = s => document.querySelector(s);
 
 // Elements
+const sidebar = $('#sidebar');
+const dragHandle = $('#drag-handle');
 const hostList = $('#host-list');
 const emptyState = $('#empty-state');
 const detailPanel = $('#detail-panel');
@@ -304,3 +306,57 @@ api.onRefresh(() => refresh());
 
 // Init
 refresh();
+
+// --- Sidebar drag + collapse ---
+
+let sidebarWidth = 240;
+const SIDEBAR_MIN = 44, SIDEBAR_MAX = 400;
+
+function setSidebarWidth(w) {
+  sidebarWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, w));
+  if (sidebarWidth <= SIDEBAR_MIN + 10) {
+    sidebar.classList.add('collapsed');
+    sidebar.classList.remove('hidden');
+  } else {
+    sidebar.classList.remove('collapsed', 'hidden');
+  }
+  sidebar.style.setProperty('--sidebar-width', `${sidebarWidth}px`);
+}
+
+// Double-click drag handle to toggle collapsed
+dragHandle.addEventListener('dblclick', () => {
+  if (sidebar.classList.contains('collapsed') || sidebar.classList.contains('hidden')) {
+    setSidebarWidth(240);
+  } else {
+    setSidebarWidth(SIDEBAR_MIN);
+  }
+});
+
+// Drag
+let dragging = false;
+dragHandle.addEventListener('mousedown', e => {
+  dragging = true;
+  dragHandle.classList.add('active');
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const rect = dragHandle.parentElement.getBoundingClientRect();
+  setSidebarWidth(e.clientX - rect.left);
+});
+
+document.addEventListener('mouseup', () => {
+  if (!dragging) return;
+  dragging = false;
+  dragHandle.classList.remove('active');
+});
+
+// Expose toggle for menu
+api.onToggleSidebar(() => {
+  if (sidebar.classList.contains('hidden')) {
+    setSidebarWidth(240);
+  } else {
+    sidebar.classList.add('hidden');
+  }
+});

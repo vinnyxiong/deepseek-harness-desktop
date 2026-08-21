@@ -24,11 +24,42 @@ body {
 
 /* Sidebar */
 #sidebar {
-  width: 240px; min-width: 200px;
+  --sidebar-width: 240px;
+  width: var(--sidebar-width); min-width: 44px; max-width: 400px;
   display: flex; flex-direction: column;
   border-right: 1px solid var(--line);
   background: var(--surface);
+  transition: width .15s ease;
+  flex-shrink: 0;
 }
+
+/* Collapsed: only show icons */
+#sidebar.collapsed {
+  --sidebar-width: 44px;
+}
+#sidebar.collapsed .sidebar-header h2,
+#sidebar.collapsed .host-item-name,
+#sidebar.collapsed .host-item-meta,
+#sidebar.collapsed #add-host-btn { display: none; }
+#sidebar.collapsed .sidebar-header { justify-content: center; padding: 14px 0 10px; }
+#sidebar.collapsed .host-item { justify-content: center; padding: 10px 0; }
+#sidebar.collapsed .host-list { padding: 4px; }
+
+/* Hidden: collapse completely */
+#sidebar.hidden {
+  --sidebar-width: 0;
+  min-width: 0; border-right: none; overflow: hidden;
+}
+#sidebar.hidden ~ #drag-handle { display: none; }
+#sidebar.hidden ~ #main { }
+
+/* Drag handle */
+#drag-handle {
+  width: 4px; cursor: col-resize;
+  background: transparent; transition: background .15s;
+  flex-shrink: 0; user-select: none;
+}
+#drag-handle:hover, #drag-handle.active { background: var(--primary); }
 
 .sidebar-header {
   display: flex; align-items: center; justify-content: space-between;
@@ -120,6 +151,44 @@ body {
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Sidebar */
+#sidebar {
+  --sidebar-width: 240px;
+  width: var(--sidebar-width); min-width: 44px; max-width: 400px;
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  transition: width .15s ease;
+  flex-shrink: 0;
+}
+
+/* Collapsed: only show icons */
+#sidebar.collapsed {
+  --sidebar-width: 44px;
+}
+#sidebar.collapsed .sidebar-header h2,
+#sidebar.collapsed .host-item-name,
+#sidebar.collapsed .host-item-meta,
+#sidebar.collapsed #add-host-btn { display: none; }
+#sidebar.collapsed .sidebar-header { justify-content: center; padding: 14px 0 10px; }
+#sidebar.collapsed .host-item { justify-content: center; padding: 10px 0; }
+#sidebar.collapsed .host-list { padding: 4px; }
+
+/* Hidden: collapse completely */
+#sidebar.hidden {
+  --sidebar-width: 0;
+  min-width: 0; border-right: none; overflow: hidden;
+}
+#drag-handle { display: none; }
+
+/* Drag handle */
+#drag-handle {
+  width: 4px; cursor: col-resize;
+  background: transparent; transition: background .15s;
+  flex-shrink: 0; user-select: none;
+}
+#drag-handle:hover, #drag-handle.active { background: var(--primary); }
 
 /* Action bar */
 .action-bar {
