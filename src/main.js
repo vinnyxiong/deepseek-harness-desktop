@@ -12,6 +12,7 @@ const { startLocalDsh } = require('./main/local-dsh');
 const { startManagedSsh } = require('./main/managed-ssh');
 const { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh } = require('./main/remote-dsh');
 const { installDshLocal } = require('./main/dsh-installer');
+const { resolveDshBin } = require('./main/local-dsh');
 const { registerNotificationIpc } = require('./main/notification-ipc');
 const { NotificationService } = require('./main/notification-service');
 const { createNotificationSettingsStore } = require('./main/notification-settings-store');
@@ -55,7 +56,22 @@ async function initialize() {
   localeService = new LocaleService({ systemLanguages: app.getPreferredSystemLanguages() });
   notificationService = new NotificationService({ settings: notificationSettings, getLocale: () => localeService.getLocale(), focusApp: focusFromNotification });
   watcher = new CompletionWatcher({ onCompletion: event => notificationService.show(event), onHostFrame: frame => localeService.handleHostFrame(frame) });
-  manager = new ConnectionManager({ startLocal: onUnexpectedExit => startLocalDsh({ executablePath: process.execPath, resourcesPath: process.resourcesPath, isPackaged: app.isPackaged, dshHome: path.join(app.getPath('userData'), '.dsh'), onUnexpectedExit }), startManagedSsh: (managedSettings, onUnexpectedExit) => startManagedSsh({ settings: managedSettings, onUnexpectedExit }), remoteDsh: { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh }, localDshInstaller: { async install({ onProgress }) { onProgress?.('preparing'); return installDshLocal({ onProgress: phase => onProgress?.(phase) }); } } });
+  // Only inject the local DSH installer when DSH is not bundled (lite build).
+  // In the full build, DSH is bundled and the installer should never be triggered.
+  let localDshInstaller = null;
+  try {
+    resolveDshBin({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
+  } catch {
+    // DSH is not bundled — enable auto-install on first launch
+    localDshInstaller = {
+      async install({ onProgress }) {
+        onProgress?.('preparing');
+        return installDshLocal({ onProgress: phase => onProgress?.(phase) });
+      },
+    };
+  }
+
+  manager = new ConnectionManager({ startLocal: onUnexpectedExit => startLocalDsh({ executablePath: process.execPath, resourcesPath: process.resourcesPath, isPackaged: app.isPackaged, dshHome: path.join(app.getPath('userData'), '.dsh'), onUnexpectedExit }), startManagedSsh: (managedSettings, onUnexpectedExit) => startManagedSsh({ settings: managedSettings, onUnexpectedExit }), remoteDsh: { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh }, localDshInstaller });
   manager.setTargetSettings(settings);
   manager.on('status', snapshot => { windows.sendStatus({ ...snapshot, settings, warning: settingsWarning }); syncIntegrations(snapshot); buildMenu(); if (snapshot.state === 'error' && !snapshot.endpoint) windows.recoverToSettings(); });
   localeService.on('change', locale => { buildMenu(); windows.sendNotificationLocale(locale, locale === 'en' ? notificationStringsEn : notificationStringsZh); });
