@@ -86,17 +86,19 @@ class HostManager extends EventEmitter {
       return this.getSnapshot(hostId);
     }
 
-    const conn = { state: 'connecting', error: null, progress: null, remoteDshState: null, generation: 0, handle: null, settings: host, monitorTimer: null };
+    const conn = { state: 'connecting', error: null, progress: { phase: 'connecting', message: '正在连接...' }, remoteDshState: null, generation: 0, handle: null, settings: host, monitorTimer: null };
     this.connections.set(hostId, conn);
     this.emitStatus(hostId);
 
     try {
       const handle = await this.createHandle(host, conn);
+      conn.progress = { phase: 'health-check', message: '正在检查服务状态...' };
+      this.emitStatus(hostId);
       conn.generation = 1;
       conn.handle = handle;
       conn.state = 'connected';
       conn.error = null;
-      conn.progress = null;
+      conn.progress = { phase: 'connected', message: '已连接' };
       this.emitStatus(hostId);
       this.startMonitor(hostId, conn, handle);
       return this.getSnapshot(hostId);
@@ -114,16 +116,19 @@ class HostManager extends EventEmitter {
     let handle = null;
 
     if (host.type === 'local') {
+      conn.progress = { phase: 'starting', message: '正在启动本机 DSH...' };
+      this.emitStatus(host.id);
       try {
         handle = await this.startLocal(details => this.handleUnexpectedExit(host.id, details));
       } catch (error) {
         if (error instanceof DshNotInstalledError && this.localDshInstaller) {
-          conn.progress = { phase: 'preparing' };
+          conn.progress = { phase: 'preparing', message: '正在准备安装 DSH...' };
           this.emitStatus(host.id);
           try {
             const result = await this.localDshInstaller.install({
               onProgress: (phase) => {
-                conn.progress = { phase };
+                const messages = { preparing: '正在准备安装 DSH...', installing: '正在下载并安装 DSH，请稍候...', done: '安装完成，正在启动...' };
+                conn.progress = { phase, message: messages[phase] || phase };
                 this.emitStatus(host.id);
               },
             });
@@ -133,6 +138,8 @@ class HostManager extends EventEmitter {
           } catch (installError) {
             throw new Error(`DSH installation failed: ${publicError(installError)}`);
           }
+          conn.progress = { phase: 'starting', message: '正在启动本机 DSH...' };
+          this.emitStatus(host.id);
           handle = await this.startLocal(details => this.handleUnexpectedExit(host.id, details));
         } else {
           throw error;
@@ -140,7 +147,8 @@ class HostManager extends EventEmitter {
       }
     } else if (host.type === 'remote') {
       if (host.host === 'tunnel') {
-        // External tunnel mode — just connect to localPort
+        conn.progress = { phase: 'connecting', message: '正在连接外部隧道...' };
+        this.emitStatus(host.id);
         handle = {
           mode: 'external',
           endpoint: `http://127.0.0.1:${host.localPort}`,
@@ -151,6 +159,8 @@ class HostManager extends EventEmitter {
       } else {
         let dynamicRemotePort = null;
         if (this.remoteDsh && host.autoStartRemoteDsh !== false) {
+          conn.progress = { phase: 'remote-start', message: '正在启动远程 DSH...' };
+          this.emitStatus(host.id);
           try {
             const result = await this.remoteDsh.startRemoteDsh(host, {
               autoInstall: host.autoInstallRemoteDsh !== false,
@@ -167,6 +177,8 @@ class HostManager extends EventEmitter {
             }
           }
         }
+        conn.progress = { phase: 'ssh-tunnel', message: '正在建立 SSH 隧道...' };
+        this.emitStatus(host.id);
         handle = await this.startManagedSsh(host, details => this.handleUnexpectedExit(host.id, details), dynamicRemotePort);
       }
     }

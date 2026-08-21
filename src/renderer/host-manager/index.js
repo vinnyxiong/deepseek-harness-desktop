@@ -52,7 +52,7 @@ function renderHostList() {
       <span class="host-item-icon ${snap.state}"></span>
       <div class="host-item-info">
         <div class="host-item-name">${esc(host.name)}</div>
-        <div class="host-item-meta">${stateLabel(snap.state)}${snap.endpoint ? ' · ' + new URL(snap.endpoint).port : ''}</div>
+        <div class="host-item-meta">${stateLabel(snap)}${snap.endpoint ? ' · ' + new URL(snap.endpoint).port : ''}</div>
       </div>
     `;
     li.addEventListener('click', () => selectHost(host.id));
@@ -77,7 +77,17 @@ function renderDetail() {
   const isConnected = snap.state === 'connected';
 
   // Status
-  statusText.textContent = stateLabel(snap.state);
+  const phaseLabels = {
+    connecting: '正在连接...',
+    starting: '正在启动本机 DSH...',
+    'remote-start': '正在启动远程 DSH...',
+    'ssh-tunnel': '正在建立 SSH 隧道...',
+    'health-check': '正在检查服务状态...',
+    preparing: '正在准备安装 DSH...',
+    installing: '正在下载并安装 DSH，请稍候...',
+    connected: '已连接',
+  };
+  statusText.textContent = snap.progress?.message || phaseLabels[snap.progress?.phase] || stateLabel(snap);
   detailStatus.className = `detail-status ${snap.state}`;
   if (snap.endpoint) {
     statusEndpoint.hidden = false;
@@ -134,9 +144,10 @@ function renderDetail() {
   }
 }
 
-function stateLabel(state) {
+function stateLabel(snap) {
+  if (snap.progress?.message) return snap.progress.message;
   const labels = { idle: '未连接', connecting: '连接中...', installing: '安装中...', connected: '已连接', error: '错误' };
-  return labels[state] || state;
+  return labels[snap.state] || snap.state;
 }
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
