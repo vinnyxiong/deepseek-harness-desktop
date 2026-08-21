@@ -112,6 +112,17 @@ async function installDshLocal({
 } = {}) {
   await fs.promises.mkdir(DSH_RUNNER_DIR, { recursive: true });
 
+  // Write a minimal package.json with overrides to pin all @deepseek-ai/*
+  // transitive dependencies to the exact version. Without this, npm caret
+  // ranges (^0.1.0-rc.6) can resolve to rc.8 which may have missing
+  // transitive deps like dsh-session-checkpoint-policy that don't exist
+  // on the npm registry.
+  await fs.promises.writeFile(
+    path.join(DSH_RUNNER_DIR, 'package.json'),
+    JSON.stringify({ overrides: { '@deepseek-ai/*': DSH_VERSION } }, null, 2) + '\n',
+    'utf8',
+  );
+
   onProgress?.('checking');
 
   const npmPath = findBin('npm');
