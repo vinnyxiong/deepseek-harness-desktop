@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Host 管理器</title>
+  <link rel="stylesheet" href="./index.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <h2>Hosts</h2>
+        <button id="add-host-btn" class="icon-btn" title="添加 Host">+</button>
+      </div>
+      <ul id="host-list" class="host-list" role="listbox"></ul>
+    </aside>
+
+    <!-- Main area -->
+    <main id="main">
+      <!-- Empty state -->
+      <div id="empty-state" class="empty-state" hidden>
+        <div class="empty-icon" aria-hidden="true">DSH</div>
+        <h3>选择一个 Host</h3>
+        <p>从左侧列表选择一个 Host 查看详情</p>
+      </div>
+
+      <!-- Detail panel -->
+      <div id="detail-panel" class="detail-panel" hidden>
+        <!-- Status bar -->
+        <div id="detail-status" class="detail-status" aria-live="polite">
+          <span id="status-text">未连接</span>
+          <span id="status-endpoint" class="status-endpoint" hidden></span>
+        </div>
+
+        <!-- Install progress -->
+        <div id="install-progress" class="install-progress" aria-live="polite" hidden>
+          <div class="install-progress-inner">
+            <span class="install-spinner" aria-hidden="true"></span>
+            <span id="install-progress-text">正在安装 DSH...</span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="action-bar">
+          <button id="connect-btn" class="primary">连接</button>
+          <button id="disconnect-btn" hidden>断开</button>
+          <button id="retry-btn" hidden>重试</button>
+        </div>
+
+        <!-- Remote DSH controls (hidden for local host) -->
+        <div id="remote-controls" class="remote-controls" hidden>
+          <div class="remote-status" id="remote-dsh-status" hidden>
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="remote-dsh-status-text"></span>
+          </div>
+          <div class="remote-actions">
+            <button id="restart-dsh-btn">重启远程 DSH</button>
+            <button id="stop-dsh-btn" class="danger">停止远程 DSH</button>
+          </div>
+          <div class="remote-actions-secondary">
+            <button id="check-version-btn">查看版本</button>
+            <button id="process-details-btn">进程详情</button>
+            <button id="view-log-btn">查看日志</button>
+            <button id="view-config-btn">查看配置</button>
+            <button id="update-dsh-btn">更新版本</button>
+          </div>
+          <div class="remote-info" id="remote-dsh-info" hidden>
+            <div class="info-row"><span>远程 DSH 版本</span><code id="remote-dsh-version-text">--</code></div>
+          </div>
+          <details class="remote-details" id="remote-dsh-details" hidden>
+            <summary>进程详情</summary>
+            <pre id="remote-dsh-details-text"></pre>
+          </details>
+          <details class="remote-details" id="remote-dsh-log" hidden>
+            <summary>远程 DSH 日志</summary>
+            <pre id="remote-dsh-log-text"></pre>
+          </details>
+          <details class="remote-details" id="remote-dsh-config" hidden>
+            <summary>远程 DSH 配置</summary>
+            <pre id="remote-dsh-config-text"></pre>
+          </details>
+          <div class="remote-update" id="remote-dsh-update" hidden>
+            <pre id="remote-dsh-update-text"></pre>
+          </div>
+        </div>
+
+        <!-- Host config form -->
+        <div id="config-form" class="config-form">
+          <div class="config-section">
+            <h3>基本信息</h3>
+            <div class="fields">
+              <label><span>名称</span><input id="host-name" type="text" maxlength="64" placeholder="我的服务器"></label>
+            </div>
+          </div>
+
+          <div id="ssh-config" class="config-section" hidden>
+            <h3>SSH 配置</h3>
+            <div class="fields grid">
+              <label><span>主机</span><input id="host-field" type="text" maxlength="253" placeholder="10.0.0.1"></label>
+              <label><span>用户</span><input id="username-field" type="text" maxlength="64" placeholder="root"></label>
+              <label><span>SSH 端口</span><input id="ssh-port-field" type="number" min="1" max="65535" value="22"></label>
+              <label><span>本地转发端口</span><input id="local-port-field" type="number" min="1" max="65535" value="3080"></label>
+            </div>
+            <div class="fields" style="margin-top: 12px;">
+              <label><span>私钥路径 <em>可选</em></span><input id="identity-file-field" type="text" placeholder="/Users/name/.ssh/id_ed25519"></label>
+              <label><span>主机密钥验证</span><select id="host-key-policy-field"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
+            </div>
+          </div>
+
+          <div id="startup-options" class="config-section" hidden>
+            <h3>启动选项</h3>
+            <div class="checkbox-list">
+              <label class="checkbox-label"><input id="auto-start-field" type="checkbox" checked><span><strong>连接时自动启动远程 DSH</strong><small>建立隧道前检查并启动远程服务。</small></span></label>
+              <label class="checkbox-label"><input id="auto-stop-field" type="checkbox" checked><span><strong>断开时自动停止远程 DSH</strong><small>仅停止由此连接管理的远程服务。</small></span></label>
+              <label class="checkbox-label"><input id="auto-install-field" type="checkbox" checked><span><strong>自动安装远程 DSH</strong><small>远程机器未安装 DSH 时，自动通过 npm 安装。</small></span></label>
+            </div>
+          </div>
+
+          <div class="action-bar">
+            <button id="save-btn" class="primary">保存配置</button>
+            <button id="delete-btn" class="danger">删除 Host</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Add Host Dialog -->
+  <dialog id="add-dialog">
+    <div class="dialog-content">
+      <h3>添加 Host</h3>
+      <div class="dialog-options">
+        <button class="add-option" data-type="local">
+          <span class="add-option-icon local-icon" aria-hidden="true"></span>
+          <span><strong>本机</strong><small>在本地启动 DSH</small></span>
+        </button>
+        <button class="add-option" data-type="remote">
+          <span class="add-option-icon remote-icon" aria-hidden="true"></span>
+          <span><strong>远程服务器</strong><small>通过 SSH 连接远程 DSH</small></span>
+        </button>
+      </div>
+      <div class="dialog-actions">
+        <button id="cancel-add-btn">取消</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="./index.js"></script>
+</body>
+</html>

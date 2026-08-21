@@ -1,146 +1,129 @@
 const { ipcMain } = require('electron');
-const { validateSettings } = require('./settings-store');
+const { randomUUID } = require('crypto');
+const { validateHost } = require('./host-store');
 
 const CHANNELS = [
-  'connection:get-state',
-  'connection:save-and-connect',
-  'connection:retry',
-  'connection:disconnect',
-  'connection:use-local',
-  'connection:remote-dsh-restart',
-  'connection:remote-dsh-stop',
-  'connection:remote-dsh-version',
-  'connection:remote-dsh-log',
-  'connection:remote-dsh-process-details',
-  'connection:remote-dsh-config',
-  'connection:remote-dsh-update',
+  'host:get-state', 'host:add', 'host:update', 'host:delete',
+  'host:connect', 'host:disconnect',
+  'host:remote-dsh-restart', 'host:remote-dsh-stop',
+  'host:remote-dsh-version', 'host:remote-dsh-log',
+  'host:remote-dsh-process-details', 'host:remote-dsh-config',
+  'host:remote-dsh-update',
 ];
 
-function registerConnectionIpc({ actions, manager, windows, getSettings, getWarning, persistSettings }) {
+function registerHostIpc({ actions, manager, windows, store, getWarning }) {
   const runTransaction = action => actions.run(action);
 
   const authorize = event => {
-    if (!windows.isSettingsSender(event.sender)) {
-      throw new Error('Connection settings IPC is only available to the settings window');
+    if (!windows.isHostManagerSender(event.sender)) {
+      throw new Error('Host manager IPC is only available to the host manager window');
     }
     if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame) {
-      throw new Error('Connection settings IPC is only available to the main frame');
+      throw new Error('Host manager IPC is only available to the main frame');
     }
     const frameUrl = event.senderFrame.url ?? '';
-    if (!windows.isSettingsUrl(frameUrl)) throw new Error('Invalid connection settings frame');
+    if (!windows.isHostManagerUrl(frameUrl)) throw new Error('Invalid host manager frame');
   };
 
-  const present = async snapshot => {
-    await windows.showMain(snapshot.endpoint);
-    // Keep settings window visible for managed SSH mode so the user
-    // can see remote DSH status and use the restart/stop controls.
-    if (snapshot.mode !== 'managedSsh') windows.hideSettings();
-    return snapshot;
-  };
-
-  const presentAndPersist = async (settings, snapshot) => {
-    try {
-      await present(snapshot);
-    } catch (error) {
-      await manager.disconnect();
-      windows.recoverToSettings();
-      throw error;
-    }
-    try {
-      await persistSettings(settings);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Connected successfully, but the connection preference could not be saved: ${detail}`);
-    }
-    return snapshot;
-  };
-
-  const connectPersistAndPresent = async settings => {
-    const snapshot = await manager.connect(settings);
-    if (snapshot.mode !== settings.mode) {
-      throw new Error(snapshot.error || 'The requested connection could not be activated');
-    }
-    return presentAndPersist(settings, snapshot);
-  };
-
-  ipcMain.handle('connection:get-state', event => {
+  ipcMain.handle('host:get-state', event => {
     authorize(event);
-    return { ...manager.getSnapshot(), settings: getSettings(), warning: getWarning?.() ?? null };
+    const settings = store.get();
+    return { hosts: settings.hosts, snapshots: manager.getSnapshots(), warning: getWarning?.() ?? null };
   });
 
-  ipcMain.handle('connection:save-and-connect', (event, input) => {
+  ipcMain.handle('host:add', (event, input) => {
     authorize(event);
-    const settings = validateSettings(input);
-    return runTransaction(() => connectPersistAndPresent(settings));
-  });
-
-  ipcMain.handle('connection:retry', event => {
-    authorize(event);
+    const host = validateHost({ ...input, id: randomUUID() }, 0);
     return runTransaction(async () => {
-      const snapshot = await manager.retry();
-      if (!snapshot.settings) throw new Error('There is no connection preference to save');
-      return presentAndPersist(snapshot.settings, snapshot);
+      const settings = store.get();
+      const hosts = [...settings.hosts, host];
+      store.set(await store.save({ ...settings, hosts }));
+      return host;
     });
   });
 
-  ipcMain.handle('connection:disconnect', event => {
+  ipcMain.handle('host:update', (event, input) => {
     authorize(event);
     return runTransaction(async () => {
-      await manager.disconnect();
-      windows.recoverToSettings();
-      return manager.getSnapshot();
+      const settings = store.get();
+      const idx = settings.hosts.findIndex(h => h.id === input.id);
+      if (idx === -1) throw new Error('Host not found');
+      const host = validateHost(input, idx);
+      const hosts = [...settings.hosts];
+      hosts[idx] = host;
+      store.set(await store.save({ ...settings, hosts }));
+      manager.setHosts(hosts);
+      return host;
     });
   });
 
-  ipcMain.handle('connection:use-local', event => {
-    authorize(event);
-    const current = getSettings();
-    const settings = validateSettings({ ...current, mode: 'local' });
-    return runTransaction(() => connectPersistAndPresent(settings));
-  });
-
-  ipcMain.handle('connection:remote-dsh-restart', event => {
+  ipcMain.handle('host:delete', (event, hostId) => {
     authorize(event);
     return runTransaction(async () => {
-      await manager.restartRemoteDsh();
-      return manager.getSnapshot();
+      const settings = store.get();
+      const host = settings.hosts.find(h => h.id === hostId);
+      if (!host) throw new Error('Host not found');
+      if (host.type === 'local') throw new Error('Cannot delete the local host');
+      await manager.disconnect(hostId);
+      const hosts = settings.hosts.filter(h => h.id !== hostId);
+      store.set(await store.save({ ...settings, hosts }));
+      manager.setHosts(hosts);
     });
   });
 
-  ipcMain.handle('connection:remote-dsh-stop', event => {
+  ipcMain.handle('host:connect', (event, hostId) => {
     authorize(event);
     return runTransaction(async () => {
-      await manager.stopRemoteDsh();
-      return manager.getSnapshot();
+      const snapshot = await manager.connect(hostId);
+      if (snapshot.state === 'connected') {
+        await windows.showHostWindow(hostId, snapshot.endpoint);
+      }
+      return snapshot;
     });
   });
 
-  ipcMain.handle('connection:remote-dsh-version', event => {
-    authorize(event);
-    return runTransaction(() => manager.getRemoteDshVersion());
-  });
-
-  ipcMain.handle('connection:remote-dsh-log', event => {
-    authorize(event);
-    return runTransaction(() => manager.getRemoteDshLog());
-  });
-
-  ipcMain.handle('connection:remote-dsh-process-details', event => {
-    authorize(event);
-    return runTransaction(() => manager.getRemoteDshProcessDetails());
-  });
-
-  ipcMain.handle('connection:remote-dsh-config', event => {
-    authorize(event);
-    return runTransaction(() => manager.getRemoteDshConfig());
-  });
-
-  ipcMain.handle('connection:remote-dsh-update', event => {
+  ipcMain.handle('host:disconnect', (event, hostId) => {
     authorize(event);
     return runTransaction(async () => {
-      const result = await manager.updateRemoteDsh();
-      return result;
+      await manager.disconnect(hostId);
+      windows.closeHostWindow(hostId);
+      return manager.getSnapshot(hostId);
     });
+  });
+
+  ipcMain.handle('host:remote-dsh-restart', (event, hostId) => {
+    authorize(event);
+    return runTransaction(() => manager.restartRemoteDsh(hostId));
+  });
+
+  ipcMain.handle('host:remote-dsh-stop', (event, hostId) => {
+    authorize(event);
+    return runTransaction(() => manager.stopRemoteDsh(hostId));
+  });
+
+  ipcMain.handle('host:remote-dsh-version', (event, hostId) => {
+    authorize(event);
+    return runTransaction(() => manager.getRemoteDshVersion(hostId));
+  });
+
+  ipcMain.handle('host:remote-dsh-log', (event, hostId) => {
+    authorize(event);
+    return runTransaction(() => manager.getRemoteDshLog(hostId));
+  });
+
+  ipcMain.handle('host:remote-dsh-process-details', (event, hostId) => {
+    authorize(event);
+    return runTransaction(() => manager.getRemoteDshProcessDetails(hostId));
+  });
+
+  ipcMain.handle('host:remote-dsh-config', (event, hostId) => {
+    authorize(event);
+    return runTransaction(() => manager.getRemoteDshConfig(hostId));
+  });
+
+  ipcMain.handle('host:remote-dsh-update', (event, hostId) => {
+    authorize(event);
+    return runTransaction(() => manager.updateRemoteDsh(hostId));
   });
 
   return () => {
@@ -148,4 +131,4 @@ function registerConnectionIpc({ actions, manager, windows, getSettings, getWarn
   };
 }
 
-module.exports = { registerConnectionIpc };
+module.exports = { registerHostIpc };
