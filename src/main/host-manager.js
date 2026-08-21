@@ -156,6 +156,10 @@ class HostManager extends EventEmitter {
         try {
           const result = await this.remoteDsh.startRemoteDsh(host, {
             autoInstall: host.autoInstallRemoteDsh !== false,
+            onProgress: (phase, message) => {
+              conn.progress = { phase, message };
+              this.emitStatus(host.id);
+            },
           });
           dynamicRemotePort = result.port;
           conn.remoteDshState = { running: true, pid: result.pid, port: result.port };

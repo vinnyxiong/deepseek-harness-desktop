@@ -79,6 +79,8 @@ function renderDetail() {
     connecting: '正在连接...',
     starting: '正在启动本机 DSH...',
     'remote-start': '正在启动远程 DSH...',
+    'remote-install-checking': '正在检查远程环境...',
+    'remote-installing': '正在远程安装 DSH，请稍候...',
     'ssh-tunnel': '正在建立 SSH 隧道...',
     'health-check': '正在检查服务状态...',
     checking: '正在检查环境...',
@@ -100,16 +102,18 @@ function renderDetail() {
   }
 
   // Install progress
-  if (snap.state === 'installing') {
+  const isRemoteInstalling = snap.progress?.phase === 'remote-install-checking' || snap.progress?.phase === 'remote-installing';
+  if (snap.state === 'installing' || isRemoteInstalling) {
     installProgress.hidden = false;
-    const phases = { preparing: '正在准备安装...', installing: '正在下载并安装 DSH，请稍候...', done: '安装完成，正在启动...' };
-    installProgressText.textContent = phases[snap.progress?.phase] || '正在安装 DSH...';
+    const phases = { preparing: '正在准备安装...', installing: '正在下载并安装 DSH，请稍候...', done: '安装完成，正在启动...', 'remote-install-checking': '正在检查远程环境...', 'remote-installing': '正在远程安装 DSH，请稍候...' };
+    installProgressText.textContent = phases[snap.progress?.phase] || snap.progress?.message || '正在安装 DSH...';
   } else {
     installProgress.hidden = true;
   }
 
   // Buttons
-  connectBtn.hidden = isConnected || snap.state === 'connecting' || snap.state === 'installing';
+  const isConnecting = snap.state === 'connecting' || snap.progress?.phase === 'remote-install-checking' || snap.progress?.phase === 'remote-installing';
+  connectBtn.hidden = isConnected || isConnecting || snap.state === 'installing';
   disconnectBtn.hidden = !isConnected;
   retryBtn.hidden = snap.state !== 'error';
 

@@ -3,6 +3,8 @@ const { buildCommonSshOptions, DEFAULT_SSH_PATH } = require('./managed-ssh');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
 const { DSH_PACKAGE_SPEC } = require('./dsh-installer');
 
+const DSH_REMOTE_BIN = '~/.local/state/dsh/runner/node_modules/.bin/dsh';
+
 const COMMAND_TIMEOUT_MS = 15_000;
 
 function buildRemoteSshArgs(settings) {
@@ -74,7 +76,7 @@ async function checkRemoteNpmAvailable(settings, opts = {}) {
 }
 
 async function checkRemoteDshInstalled(settings, opts = {}) {
-  const command = 'test -x ~/.local/state/dsh/runner/node_modules/.bin/dsh && echo "installed" || echo "missing"';
+  const command = `test -x ${DSH_REMOTE_BIN} && echo "installed" || echo "missing"`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
   return stdout.includes('installed');
 }
@@ -90,22 +92,24 @@ async function startRemoteDsh(settings, opts = {}) {
   if (opts.autoInstall === true) {
     const installed = await checkRemoteDshInstalled(settings, opts);
     if (!installed) {
+      opts.onProgress?.('remote-install-checking', '正在检查远程环境...');
       const npmOk = await checkRemoteNpmAvailable(settings, opts);
       if (!npmOk) {
         throw new Error('Remote machine does not have npm. Please install Node.js and npm on the remote machine, or disable "Auto-install remote DSH" in connection settings.');
       }
+      opts.onProgress?.('remote-installing', '正在远程安装 DSH，请稍候...');
       await installRemoteDsh(settings, opts);
       const recheck = await checkRemoteDshInstalled(settings, opts);
       if (!recheck) {
         throw new Error('DSH installation on the remote machine completed but the binary was not found. Check npm output for errors.');
       }
+      opts.onProgress?.('remote-start', '安装完成，正在启动远程 DSH...');
     }
   }
 
   // Start dsh web --port 0 on the remote machine, capture its PID and port.
-  // The shell script starts dsh in the background, then polls stdout for the
-  // port number (up to 30 seconds). Outputs "PID:<pid> PORT:<port>" on success.
-  const command = `nohup dsh web --port 0 > /tmp/dsh-remote-$$.log 2>&1 & PID=$!; for i in $(seq 1 30); do PORT=$(grep -oP 'http://127\\.0\\.0\\.1:\\K\\d+' /tmp/dsh-remote-$$.log 2>/dev/null); if [ -n "$PORT" ]; then echo "PID:$PID PORT:$PORT"; exit 0; fi; if ! kill -0 $PID 2>/dev/null; then echo "EXITED"; exit 1; fi; sleep 1; done; kill $PID 2>/dev/null; echo "TIMEOUT"; exit 1`;
+  // Use the full path since npm --prefix installs into a local node_modules.
+  const command = `nohup ${DSH_REMOTE_BIN} web --port 0 > /tmp/dsh-remote-$$.log 2>&1 & PID=$!; for i in $(seq 1 30); do PORT=$(grep -oP 'http://127\\.0\\.0\\.1:\\K\\d+' /tmp/dsh-remote-$$.log 2>/dev/null); if [ -n "$PORT" ]; then echo "PID:$PID PORT:$PORT"; exit 0; fi; if ! kill -0 $PID 2>/dev/null; then echo "EXITED"; exit 1; fi; sleep 1; done; kill $PID 2>/dev/null; echo "TIMEOUT"; exit 1`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 45_000 });
 
   const pidMatch = stdout.match(/PID:(\d+)/);
@@ -143,7 +147,7 @@ async function getRemoteDshStatus(settings, pid, opts = {}) {
 
 async function getRemoteDshVersion(settings, opts = {}) {
   try {
-    const command = 'dsh --version 2>/dev/null || echo "unknown"';
+    const command = `${DSH_REMOTE_BIN} --version 2>/dev/null || echo "unknown"`;
     const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
     return { version: stdout.trim() || 'unknown' };
   } catch {
@@ -166,7 +170,7 @@ async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
 }
 
 async function updateRemoteDsh(settings, opts = {}) {
-  const command = `npm install --prefer-offline --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1; echo "---"; dsh --version 2>/dev/null || echo "version-unknown"`;
+  const command = `npm install --prefer-offline --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }
