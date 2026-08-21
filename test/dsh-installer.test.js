@@ -43,6 +43,7 @@ test('installDshLocal resolves with success on exit code 0', async () => {
   let spawnOpts = null;
 
   const result = await installDshLocal({
+    npmPath: '/usr/bin/npm',
     spawnImpl: (cmd, args, opts) => {
       spawnArgs = args;
       spawnOpts = opts;
@@ -55,17 +56,16 @@ test('installDshLocal resolves with success on exit code 0', async () => {
   assert.equal(result.success, true);
   assert.ok(spawnArgs.includes('install'));
   assert.ok(spawnArgs.includes('@deepseek-ai/dsh'));
-  assert.equal(spawnOpts.shell, true);
+  assert.equal(spawnOpts.shell, false);
   assert.ok(phases.length > 0);
 
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 });
 
-test('installDshLocal rejects when npm is not found', async () => {
-  // With shell: true, npm not found results in exit code 127
+test('installDshLocal rejects when npmPath is null', async () => {
   await assert.rejects(
     () => installDshLocal({
-      spawnImpl: () => spawnExit(127, null, '', 'npm: command not found'),
+      npmPath: null,
       timeoutMs: 5000,
     }),
     /npm is not available/,
