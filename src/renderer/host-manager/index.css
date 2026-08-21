@@ -126,7 +126,7 @@ body {
 .empty-state h3 { margin: 0 0 4px; font-size: 14px; color: var(--text); }
 .empty-state p { margin: 0; font-size: 12px; color: var(--text-muted); }
 
-.detail-panel[hidden], .remote-controls[hidden], #ssh-config[hidden], #startup-options[hidden] { display: none; }
+.empty-state[hidden], .detail-panel[hidden], .remote-controls[hidden], #ssh-config[hidden], #startup-options[hidden] { display: none !important; }
 
 /* Status bar */
 .detail-status {
