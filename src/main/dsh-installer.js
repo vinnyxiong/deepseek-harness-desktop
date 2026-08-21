@@ -7,7 +7,7 @@ const DSH_STATE_DIR = path.join(os.homedir(), '.local', 'state', 'dsh');
 const DSH_RUNNER_DIR = path.join(DSH_STATE_DIR, 'runner');
 const INSTALLED_DSH_BIN = path.join(DSH_RUNNER_DIR, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
 
-const INSTALL_TIMEOUT_MS = 300_000;
+const INSTALL_TIMEOUT_MS = 600_000;
 
 function isDshInstalled() {
   try {
@@ -20,6 +20,28 @@ function isDshInstalled() {
 
 function getInstalledDshBinPath() {
   return INSTALLED_DSH_BIN;
+}
+
+// Extract a short progress label from npm output lines.
+// npm writes progress to stderr like "npm http fetch GET 200 ..." or
+// standard progress bars. We try to find readable lines.
+function npmProgressLabel(text) {
+  // Filter out progress bar noise (lines with \r, spinner chars)
+  const clean = text.replace(/\r[^\n]*/g, '').replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '').trim();
+  if (!clean) return null;
+  // Extract meaningful patterns
+  const patterns = [
+    { re: /added (\d+) packages?/, label: (m) => `已安装 ${m[1]} 个包` },
+    { re: /reify:.*? (still|waiting|marking|auditing)/i, label: () => '正在解析依赖...' },
+    { re: /idealTree:.*?(diff|inflate)/i, label: () => '正在计算依赖树...' },
+    { re: /http fetch GET/i, label: () => '正在下载包...' },
+    { re: /reify:.*?(install|extract|node)/i, label: () => '正在安装包...' },
+  ];
+  for (const p of patterns) {
+    const m = clean.match(p.re);
+    if (m) return p.label(m);
+  }
+  return null;
 }
 
 // Find a binary by scanning known locations and PATH.
@@ -98,12 +120,15 @@ async function installDshLocal({
 
     child.stdout?.on('data', chunk => {
       stdout += chunk.toString();
-      onProgress?.('installing');
+      const label = npmProgressLabel(chunk.toString());
+      if (label) onProgress?.('installing', label);
     });
 
     child.stderr?.on('data', chunk => {
-      stderr += chunk.toString();
-      onProgress?.('installing');
+      const text = chunk.toString();
+      stderr += text;
+      const label = npmProgressLabel(text);
+      if (label) onProgress?.('installing', label);
     });
 
     child.once('error', error => {
