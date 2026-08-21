@@ -22,21 +22,32 @@ function getInstalledDshBinPath() {
   return INSTALLED_DSH_BIN;
 }
 
-// Extract a short progress label from npm output lines.
-// npm writes progress to stderr like "npm http fetch GET 200 ..." or
-// standard progress bars. We try to find readable lines.
+// Extract a short progress label from npm output.
+// npm writes most progress to stderr with control chars and progress bars.
+// We buffer chunks and extract meaningful patterns.
+let _npmBuf = '';
+
 function npmProgressLabel(text) {
-  // Filter out progress bar noise (lines with \r, spinner chars)
-  const clean = text.replace(/\r[^\n]*/g, '').replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '').trim();
-  if (!clean) return null;
-  // Extract meaningful patterns
+  _npmBuf += text;
+  // Keep only the last 2KB to avoid unbounded growth
+  if (_npmBuf.length > 2048) _npmBuf = _npmBuf.slice(-2048);
+
+  // Strip control characters to get clean lines
+  const clean = _npmBuf.replace(/\r[^\n]*/g, '\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '').trim();
+
   const patterns = [
-    { re: /added (\d+) packages?/, label: (m) => `已安装 ${m[1]} 个包` },
-    { re: /reify:.*? (still|waiting|marking|auditing)/i, label: () => '正在解析依赖...' },
-    { re: /idealTree:.*?(diff|inflate)/i, label: () => '正在计算依赖树...' },
-    { re: /http fetch GET/i, label: () => '正在下载包...' },
-    { re: /reify:.*?(install|extract|node)/i, label: () => '正在安装包...' },
+    // npm v10+ reify output
+    { re: /(?:added|removed|changed) (\d+) packages?/, label: (m) => `已安装 ${m[1]} 个包` },
+    { re: /reify:.*?timing.*?Completed in/i, label: () => '正在完成安装...' },
+    { re: /idealTree:timing/i, label: () => '正在解析依赖树...' },
+    { re: /idealTree:.*?diff/i, label: () => '正在计算依赖差异...' },
+    { re: /reify:timing/i, label: () => '正在安装包...' },
+    { re: /reify:@deepseek/i, label: () => '正在安装 DSH...' },
+    { re: /http fetch GET \d+/i, label: () => '正在下载包...' },
+    // Simple fallback: any line with "fetch" or "install" or "package"
+    { re: /(?:packages?|fetch|install|download|resolve)/i, label: () => '正在安装 DSH...' },
   ];
+
   for (const p of patterns) {
     const m = clean.match(p.re);
     if (m) return p.label(m);

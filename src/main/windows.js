@@ -33,7 +33,7 @@ function createWindowManager() {
       return hostManagerWindow;
     }
     hostManagerWindow = createSafeWindow({
-      title: 'Host 管理器',
+      title: 'DeepSeek Harness',
       width: 860, height: 700,
       preload: path.join(__dirname, '..', 'preload', 'host-manager.js'),
       file: hostManagerPath,
