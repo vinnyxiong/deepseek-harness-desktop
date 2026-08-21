@@ -74,7 +74,9 @@ function runRemoteCommand(settings, command, {
         resolve({ stdout: stdout.trim(), stderr: stderr.trim() });
       } else {
         const diag = diagnostics.toString().trim();
-        reject(new Error(diag ? `SSH command exited with code ${code}: ${diag}` : `SSH command exited with code ${code} (signal=${signal})`));
+        const output = stdout.trim();
+        const details = [diag, output].filter(Boolean).join('\n');
+        reject(new Error(details ? `SSH command exited with code ${code}:\n${details}` : `SSH command exited with code ${code} (signal=${signal})`));
       }
     });
 
@@ -102,7 +104,7 @@ async function checkRemoteDshInstalled(settings, opts = {}) {
 }
 
 async function installRemoteDsh(settings, opts = {}) {
-  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && ${WRITE_PKG_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1`;
+  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && ${WRITE_PKG_CMD} && npm install --prefer-offline --legacy-peer-deps --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }
@@ -190,7 +192,7 @@ async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
 }
 
 async function updateRemoteDsh(settings, opts = {}) {
-  const command = `${WRITE_PKG_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
+  const command = `${WRITE_PKG_CMD} && npm install --prefer-offline --legacy-peer-deps --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }

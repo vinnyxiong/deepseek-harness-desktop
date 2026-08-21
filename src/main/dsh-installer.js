@@ -168,6 +168,7 @@ async function installDshLocal({
       '--no-audit',
       '--no-fund',
       '--prefer-offline',
+      '--legacy-peer-deps',
     ], {
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],

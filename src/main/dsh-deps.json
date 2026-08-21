@@ -1,5 +1,4 @@
 {
-  "@deepseek-ai/cordis": "0.1.0-rc.6",
   "@deepseek-ai/cordis-plugin-hmr": "0.1.0-rc.6",
   "@deepseek-ai/cordis-plugin-include": "0.1.0-rc.6",
   "@deepseek-ai/cordis-plugin-loader": "0.1.0-rc.6",
@@ -172,6 +171,5 @@
   "@deepseek-ai/dsh-web-search-deepseek": "0.1.0-rc.6",
   "@deepseek-ai/dsh-workflow-worker-thread": "0.1.0-rc.6",
   "@deepseek-ai/dsh-workspace": "0.1.0-rc.6",
-  "@deepseek-ai/node-addon-landlock-run": "0.1.0-rc.6",
-  "@deepseek-ai/schemastery": "0.1.0-rc.6"
+  "@deepseek-ai/node-addon-landlock-run": "0.1.0-rc.6"
 }
