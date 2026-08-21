@@ -1,15 +1,18 @@
 const { spawn } = require('child_process');
 const { buildCommonSshOptions, DEFAULT_SSH_PATH } = require('./managed-ssh');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
-const { DSH_PACKAGE_SPEC, DSH_VERSION } = require('./dsh-installer');
+const { DSH_VERSION } = require('./dsh-installer');
 
 const DSH_REMOTE_BIN = '~/.local/state/dsh/runner/node_modules/.bin/dsh';
 const DSH_REMOTE_RUNNER_DIR = '~/.local/state/dsh/runner';
 
 // Write a minimal package.json with overrides to pin all @deepseek-ai/*
-// transitive deps. Without this, npm caret ranges can resolve to rc.8
+// transitive deps. Never use caret ranges — they resolve to newer rc.x
 // which may reference packages that don't exist on the registry.
-const OVERRIDES_JSON = JSON.stringify({ overrides: { '@deepseek-ai/*': DSH_VERSION } });
+const OVERRIDES_JSON = JSON.stringify({
+  dependencies: { '@deepseek-ai/dsh': DSH_VERSION },
+  overrides: { '@deepseek-ai/*': DSH_VERSION },
+});
 const WRITE_OVERRIDES_CMD = `echo '${OVERRIDES_JSON}' > ${DSH_REMOTE_RUNNER_DIR}/package.json`;
 
 const COMMAND_TIMEOUT_MS = 15_000;
@@ -89,7 +92,7 @@ async function checkRemoteDshInstalled(settings, opts = {}) {
 }
 
 async function installRemoteDsh(settings, opts = {}) {
-  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && ${WRITE_OVERRIDES_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1`;
+  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && ${WRITE_OVERRIDES_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }
@@ -177,7 +180,7 @@ async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
 }
 
 async function updateRemoteDsh(settings, opts = {}) {
-  const command = `${WRITE_OVERRIDES_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
+  const command = `${WRITE_OVERRIDES_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }

@@ -117,9 +117,15 @@ async function installDshLocal({
   // ranges (^0.1.0-rc.6) can resolve to rc.8 which may have missing
   // transitive deps like dsh-session-checkpoint-policy that don't exist
   // on the npm registry.
+  // The overrides field only takes effect when the package.json also has
+  // a dependencies field, so we include both and run npm install without
+  // a package argument.
   await fs.promises.writeFile(
     path.join(DSH_RUNNER_DIR, 'package.json'),
-    JSON.stringify({ overrides: { '@deepseek-ai/*': DSH_VERSION } }, null, 2) + '\n',
+    JSON.stringify({
+      dependencies: { '@deepseek-ai/dsh': DSH_VERSION },
+      overrides: { '@deepseek-ai/*': DSH_VERSION },
+    }, null, 2) + '\n',
     'utf8',
   );
 
@@ -152,7 +158,6 @@ async function installDshLocal({
       '--no-audit',
       '--no-fund',
       '--prefer-offline',
-      DSH_PACKAGE_SPEC,
     ], {
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
