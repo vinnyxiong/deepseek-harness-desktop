@@ -75,28 +75,28 @@ body {
 .host-item-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 
 /* Main */
-#main { flex: 1; overflow-y: auto; padding: 28px 32px; min-width: 0; }
+#main { flex: 1; overflow-y: auto; padding: 20px 24px; min-width: 0; }
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   height: 100%; text-align: center; color: var(--text-muted);
 }
 .empty-icon {
-  width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
-  border-radius: 14px; background: var(--primary-soft); color: var(--primary);
-  font-size: 14px; font-weight: 800; margin-bottom: 16px;
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: var(--primary-soft); color: var(--primary);
+  font-size: 12px; font-weight: 800; margin-bottom: 10px;
 }
-.empty-state h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
-.empty-state p { margin: 0; font-size: 13px; }
+.empty-state h3 { margin: 0 0 4px; font-size: 14px; color: var(--text); }
+.empty-state p { margin: 0; font-size: 12px; color: var(--text-muted); }
 
 .detail-panel[hidden], .remote-controls[hidden], #ssh-config[hidden], #startup-options[hidden] { display: none; }
 
 /* Status bar */
 .detail-status {
-  display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px; border-radius: var(--radius-sm);
-  margin-bottom: 16px;
-  font-size: 13px; font-weight: 560;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  font-size: 12px; font-weight: 560;
 }
 .detail-status { border: 1px solid var(--line); background: var(--surface-muted); }
 .detail-status.connected { border-color: #ccebd9; background: var(--success-bg); color: var(--success); }
@@ -108,9 +108,9 @@ body {
 
 /* Install progress */
 .install-progress {
-  display: flex; align-items: center; margin-bottom: 16px;
-  padding: 12px 16px; border: 1px solid #dcd8ff; border-radius: var(--radius-sm);
-  background: var(--primary-soft); color: var(--primary); font-size: 13px;
+  display: flex; align-items: center; margin-bottom: 12px;
+  padding: 8px 12px; border: 1px solid #dcd8ff; border-radius: var(--radius-sm);
+  background: var(--primary-soft); color: var(--primary); font-size: 12px;
 }
 .install-progress[hidden] { display: none; }
 .install-progress-inner { display: flex; align-items: center; gap: 10px; }
@@ -123,14 +123,14 @@ body {
 
 /* Action bar */
 .action-bar {
-  display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
+  display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;
 }
 
 button {
-  min-height: 34px; padding: 7px 14px;
-  border: 1px solid var(--line-strong); border-radius: 8px;
+  min-height: 30px; padding: 5px 12px;
+  border: 1px solid var(--line-strong); border-radius: 7px;
   background: var(--surface); color: var(--text);
-  font-size: 13px; font-weight: 600; cursor: pointer;
+  font-size: 12px; font-weight: 600; cursor: pointer;
   transition: all .15s;
 }
 button:hover { background: var(--surface-muted); border-color: #aeb7cd; }
@@ -141,32 +141,32 @@ button.danger { color: var(--danger); border-color: #f2c2c8; }
 button.danger:hover { background: var(--danger-bg); }
 
 /* Config form */
-.config-form { margin-top: 4px; }
+.config-form { margin-top: 0; }
 .config-section {
-  padding: 18px; margin-bottom: 16px;
+  padding: 14px; margin-bottom: 12px;
   border: 1px solid var(--line); border-radius: var(--radius-md);
   background: var(--surface); box-shadow: var(--shadow);
 }
-.config-section h3 { margin: 0 0 14px; font-size: 14px; font-weight: 700; }
+.config-section h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; }
 
-.fields { display: flex; flex-direction: column; gap: 12px; }
-.fields.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fields { display: flex; flex-direction: column; gap: 8px; }
+.fields.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--text); }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text); }
 label span em { font-weight: 400; color: var(--text-subtle); font-style: normal; }
 
 input, select {
-  height: 36px; padding: 6px 10px;
-  border: 1px solid var(--line-strong); border-radius: 7px;
-  background: var(--surface); color: var(--text); font-size: 13px;
+  height: 32px; padding: 4px 8px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--surface); color: var(--text); font-size: 12px;
   outline: none; transition: border-color .15s, box-shadow .15s;
 }
 input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
 
-.checkbox-list { display: flex; flex-direction: column; gap: 8px; }
+.checkbox-list { display: flex; flex-direction: column; gap: 4px; }
 .checkbox-label {
-  display: flex; flex-direction: row; align-items: flex-start; gap: 10px;
-  padding: 10px 12px; border: 1px solid transparent; border-radius: 8px;
+  display: flex; flex-direction: row; align-items: flex-start; gap: 8px;
+  padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
   cursor: pointer; transition: background .15s;
 }
 .checkbox-label:hover { background: var(--surface-muted); }
@@ -178,7 +178,7 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 
 /* Remote controls */
 .remote-controls {
-  padding: 16px; margin-bottom: 16px;
+  padding: 12px; margin-bottom: 12px;
   border: 1px solid var(--line); border-radius: var(--radius-md);
   background: var(--surface-muted);
 }
