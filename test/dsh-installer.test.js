@@ -36,7 +36,7 @@ test('isDshInstalled returns false when DSH is not installed', () => {
   assert.equal(typeof result, 'boolean');
 });
 
-test('installDshLocal runs npm install via login shell', async () => {
+test('installDshLocal finds npm and spawns install', async () => {
   const phases = [];
   let spawnCmd = null;
   let spawnArgs = null;
@@ -54,25 +54,12 @@ test('installDshLocal runs npm install via login shell', async () => {
   });
 
   assert.equal(result.success, true);
-  // Should spawn the login shell
-  assert.ok(spawnCmd.endsWith('zsh') || spawnCmd.endsWith('bash'));
-  assert.ok(spawnArgs.includes('-l'));
-  assert.ok(spawnArgs.includes('-c'));
-  const installCmd = spawnArgs[spawnArgs.length - 1];
-  assert.ok(installCmd.includes('npm install'));
-  assert.ok(installCmd.includes('@deepseek-ai/dsh'));
+  // Should be an absolute npm path
+  assert.ok(spawnCmd.endsWith('npm'), `expected npm path, got ${spawnCmd}`);
+  assert.ok(spawnArgs.includes('install'));
+  assert.ok(spawnArgs.includes('@deepseek-ai/dsh'));
   assert.equal(spawnOpts.shell, false);
   assert.ok(phases.length > 0);
-});
-
-test('installDshLocal rejects when npm is not found (exit 127)', async () => {
-  await assert.rejects(
-    () => installDshLocal({
-      spawnImpl: () => spawnExit(127, null, '', 'npm: command not found'),
-      timeoutMs: 5000,
-    }),
-    /npm is not available/,
-  );
 });
 
 test('installDshLocal rejects on non-zero exit code', async () => {

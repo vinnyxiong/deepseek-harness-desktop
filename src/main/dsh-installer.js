@@ -22,27 +22,63 @@ function getInstalledDshBinPath() {
   return INSTALLED_DSH_BIN;
 }
 
+// Find npm by scanning PATH and common locations.
+// This avoids spawning a login shell (slow) and works in Electron's
+// minimal PATH environment.
+function findNpm() {
+  // 1. Common locations on macOS / Linux
+  const candidates = [];
+  if (process.platform === 'darwin') {
+    candidates.push('/opt/homebrew/bin/npm');
+    candidates.push('/usr/local/bin/npm');
+  }
+  candidates.push('/usr/bin/npm');
+
+  for (const p of candidates) {
+    try {
+      fs.accessSync(p, fs.constants.X_OK);
+      return p;
+    } catch { /* not here */ }
+  }
+
+  // 2. Walk PATH directories
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    const p = path.join(dir, 'npm');
+    if (candidates.includes(p)) continue; // already checked
+    try {
+      fs.accessSync(p, fs.constants.X_OK);
+      return p;
+    } catch { /* not here */ }
+  }
+
+  return null;
+}
+
 async function installDshLocal({
   onProgress,
   spawnImpl = spawn,
   timeoutMs = INSTALL_TIMEOUT_MS,
 } = {}) {
-  // Ensure the install directory exists
   await fs.promises.mkdir(DSH_RUNNER_DIR, { recursive: true });
 
-  // Use a login shell to run npm install so that the user's full shell
-  // environment (PATH, nvm, fnm, etc.) is available. Electron-packaged
-  // apps have a minimal PATH that doesn't include Homebrew or other
-  // Node.js installation directories.
-  const shell = process.env.SHELL || '/bin/zsh';
-  const installCmd = `npm install --prefix "${DSH_RUNNER_DIR}" --no-audit --no-fund @deepseek-ai/dsh`;
+  const npmPath = findNpm();
+  if (!npmPath) {
+    throw new Error('npm is not available. Please install Node.js and npm first.');
+  }
 
   return new Promise((resolve, reject) => {
     let settled = false;
     let stdout = '';
     let stderr = '';
 
-    const child = spawnImpl(shell, ['-l', '-c', installCmd], {
+    const child = spawnImpl(npmPath, [
+      'install',
+      '--prefix', DSH_RUNNER_DIR,
+      '--no-audit',
+      '--no-fund',
+      '@deepseek-ai/dsh',
+    ], {
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -57,14 +93,12 @@ async function installDshLocal({
     }, timeoutMs);
 
     child.stdout?.on('data', chunk => {
-      const text = chunk.toString();
-      stdout += text;
+      stdout += chunk.toString();
       onProgress?.('installing');
     });
 
     child.stderr?.on('data', chunk => {
-      const text = chunk.toString();
-      stderr += text;
+      stderr += chunk.toString();
       onProgress?.('installing');
     });
 
@@ -89,9 +123,7 @@ async function installDshLocal({
         resolve({ success: true, path: INSTALLED_DSH_BIN });
       } else {
         const errorOutput = stderr || stdout || '';
-        if (code === 127) {
-          reject(new Error('npm is not available. Please install Node.js and npm first.'));
-        } else if (errorOutput.includes('EACCES') || errorOutput.includes('permission denied')) {
+        if (errorOutput.includes('EACCES') || errorOutput.includes('permission denied')) {
           reject(new Error(`Permission denied when installing DSH. Check permissions on ${DSH_RUNNER_DIR}.`));
         } else if (errorOutput.includes('ENOSPC') || errorOutput.includes('No space left')) {
           reject(new Error('Not enough disk space to install DSH.'));
@@ -108,6 +140,7 @@ module.exports = {
   DSH_RUNNER_DIR,
   INSTALLED_DSH_BIN,
   INSTALL_TIMEOUT_MS,
+  findNpm,
   getInstalledDshBinPath,
   installDshLocal,
   isDshInstalled,
