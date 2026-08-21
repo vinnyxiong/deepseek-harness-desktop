@@ -71,7 +71,6 @@ async function initialize() {
   } catch {
     localDshInstaller = {
       async install({ onProgress }) {
-        onProgress?.('preparing');
         return installDshLocal({ onProgress: phase => onProgress?.(phase) });
       },
     };

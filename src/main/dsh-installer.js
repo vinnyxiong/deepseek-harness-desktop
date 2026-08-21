@@ -7,7 +7,7 @@ const DSH_STATE_DIR = path.join(os.homedir(), '.local', 'state', 'dsh');
 const DSH_RUNNER_DIR = path.join(DSH_STATE_DIR, 'runner');
 const INSTALLED_DSH_BIN = path.join(DSH_RUNNER_DIR, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
 
-const INSTALL_TIMEOUT_MS = 120_000;
+const INSTALL_TIMEOUT_MS = 300_000;
 
 function isDshInstalled() {
   try {
@@ -53,13 +53,12 @@ async function installDshLocal({
 } = {}) {
   await fs.promises.mkdir(DSH_RUNNER_DIR, { recursive: true });
 
+  onProgress?.('checking');
+
   const npmPath = findBin('npm');
   if (!npmPath) {
     throw new Error('npm is not available. Please install Node.js and npm first.');
   }
-  // npm's shebang "#!/usr/bin/env node" requires node in PATH.
-  // Electron's minimal PATH does not include node, so we find it
-  // and prepend its directory to PATH.
   const nodePath = findBin('node');
   if (!nodePath) {
     throw new Error('node is not available. Please install Node.js first.');
@@ -69,6 +68,8 @@ async function installDshLocal({
     ...process.env,
     PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
   };
+
+  onProgress?.('installing');
 
   return new Promise((resolve, reject) => {
     let settled = false;

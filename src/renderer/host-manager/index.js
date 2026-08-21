@@ -83,11 +83,16 @@ function renderDetail() {
     'remote-start': '正在启动远程 DSH...',
     'ssh-tunnel': '正在建立 SSH 隧道...',
     'health-check': '正在检查服务状态...',
+    checking: '正在检查环境...',
     preparing: '正在准备安装 DSH...',
     installing: '正在下载并安装 DSH，请稍候...',
     connected: '已连接',
   };
-  statusText.textContent = snap.progress?.message || phaseLabels[snap.progress?.phase] || stateLabel(snap);
+  if (snap.state === 'error' && snap.error) {
+    statusText.textContent = snap.error;
+  } else {
+    statusText.textContent = snap.progress?.message || phaseLabels[snap.progress?.phase] || stateLabel(snap);
+  }
   detailStatus.className = `detail-status ${snap.state}`;
   if (snap.endpoint) {
     statusEndpoint.hidden = false;

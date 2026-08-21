@@ -122,12 +122,15 @@ class HostManager extends EventEmitter {
         handle = await this.startLocal(details => this.handleUnexpectedExit(host.id, details));
       } catch (error) {
         if (error instanceof DshNotInstalledError && this.localDshInstaller) {
-          conn.progress = { phase: 'preparing', message: '正在准备安装 DSH...' };
-          this.emitStatus(host.id);
           try {
             const result = await this.localDshInstaller.install({
               onProgress: (phase) => {
-                const messages = { preparing: '正在准备安装 DSH...', installing: '正在下载并安装 DSH，请稍候...', done: '安装完成，正在启动...' };
+                const messages = {
+                  checking: '正在检查环境...',
+                  preparing: '正在准备安装 DSH...',
+                  installing: '正在下载并安装 DSH，请稍候...',
+                  done: '安装完成，正在启动...',
+                };
                 conn.progress = { phase, message: messages[phase] || phase };
                 this.emitStatus(host.id);
               },
