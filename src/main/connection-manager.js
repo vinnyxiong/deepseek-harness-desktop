@@ -1,6 +1,7 @@
 const { EventEmitter } = require('events');
 const { waitForDsh, probeDsh } = require('./dsh-health');
 const { callDsh } = require('./dsh-api-client');
+const { DshNotInstalledError } = require('./local-dsh');
 
 const MONITOR_INTERVAL_MS = 5_000;
 const MONITOR_FAILURE_LIMIT = 3;
@@ -11,11 +12,12 @@ function externalTunnelHandle(localPort) {
 }
 
 class ConnectionManager extends EventEmitter {
-  constructor({ startLocal, startManagedSsh, remoteDsh = null, health = { waitForDsh, probeDsh }, monitorIntervalMs = MONITOR_INTERVAL_MS, monitorFailureLimit = MONITOR_FAILURE_LIMIT }) {
+  constructor({ startLocal, startManagedSsh, remoteDsh = null, localDshInstaller = null, health = { waitForDsh, probeDsh }, monitorIntervalMs = MONITOR_INTERVAL_MS, monitorFailureLimit = MONITOR_FAILURE_LIMIT }) {
     super();
     this.startLocal = startLocal;
     this.startManagedSsh = startManagedSsh;
     this.remoteDsh = remoteDsh;
+    this.localDshInstaller = localDshInstaller;
     this.health = health;
     this.monitorIntervalMs = monitorIntervalMs;
     this.monitorFailureLimit = monitorFailureLimit;
@@ -29,7 +31,7 @@ class ConnectionManager extends EventEmitter {
     this.pendingCleanupHandle = null;
     this.ownedHandles = new Set();
     this.remoteDshState = { running: false, pid: null };
-    this.snapshot = { state: 'idle', mode: null, endpoint: null, error: null };
+    this.snapshot = { state: 'idle', mode: null, endpoint: null, error: null, progress: null };
   }
 
   getSnapshot() {
@@ -66,17 +68,49 @@ class ConnectionManager extends EventEmitter {
   async createHandle(settings) {
     let handle = null;
     if (settings.mode === 'local') {
-      handle = await this.startLocal(details => this.handleUnexpectedOwnedExit(handle, details));
+      // Try to start local DSH; if DSH is not installed (lite build), auto-install
+      try {
+        handle = await this.startLocal(details => this.handleUnexpectedOwnedExit(handle, details));
+      } catch (error) {
+        if (error instanceof DshNotInstalledError && this.localDshInstaller) {
+          // Trigger auto-installation
+          this.setSnapshot({ state: 'installing', mode: 'local', error: null, progress: { phase: 'preparing' } });
+          try {
+            const result = await this.localDshInstaller.install({
+              onProgress: (phase) => {
+                this.setSnapshot({ ...this.snapshot, progress: { phase } });
+              },
+            });
+            if (!result.success) {
+              throw new Error('DSH installation failed. Please ensure npm is available and try again.');
+            }
+          } catch (installError) {
+            throw new Error(`DSH installation failed: ${publicError(installError)}`);
+          }
+          // Retry after installation
+          handle = await this.startLocal(details => this.handleUnexpectedOwnedExit(handle, details));
+        } else {
+          throw error;
+        }
+      }
     } else if (settings.mode === 'managedSsh') {
       // Auto-start remote DSH before creating the tunnel
       if (this.remoteDsh && settings.managedSsh.autoStartRemoteDsh !== false) {
         try {
-          const result = await this.remoteDsh.startRemoteDsh(settings.managedSsh);
+          const result = await this.remoteDsh.startRemoteDsh(settings.managedSsh, {
+            autoInstall: settings.managedSsh.autoInstallRemoteDsh !== false,
+          });
           this.remoteDshState = { running: true, pid: result.pid };
         } catch (error) {
           // Log but don't fail — user may have started DSH manually
           console.error('Failed to auto-start remote DSH:', error.message);
           this.remoteDshState = { running: false, pid: null };
+          // If auto-install was requested and the error is about prerequisites,
+          // surface it to the user
+          if (settings.managedSsh.autoInstallRemoteDsh !== false &&
+              (error.message.includes('npm') || error.message.includes('installation'))) {
+            throw error;
+          }
         }
       }
       handle = await this.startManagedSsh(settings.managedSsh, details => this.handleUnexpectedOwnedExit(handle, details));
@@ -283,7 +317,9 @@ class ConnectionManager extends EventEmitter {
     } catch (error) {
       // Ignore stop errors; the process might already be dead
     }
-    const result = await this.remoteDsh.startRemoteDsh(this.settings.managedSsh);
+    const result = await this.remoteDsh.startRemoteDsh(this.settings.managedSsh, {
+      autoInstall: this.settings.managedSsh.autoInstallRemoteDsh !== false,
+    });
     this.remoteDshState = { running: true, pid: result.pid };
     this.setSnapshot(this.snapshot);
     return this.remoteDshState;

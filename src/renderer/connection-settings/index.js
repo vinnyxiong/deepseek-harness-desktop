@@ -21,6 +21,7 @@ const disconnectButton = $('#disconnect');
 const useLocalButton = $('#use-local');
 const autoStartRemoteDsh = $('#auto-start-remote-dsh');
 const autoStopRemoteDsh = $('#auto-stop-remote-dsh');
+const autoInstallRemoteDsh = $('#auto-install-remote-dsh');
 const remoteDshStatus = $('#remote-dsh-status');
 const remoteDshControls = $('#remote-dsh-controls');
 const remoteDshStatusText = $('#remote-dsh-status-text');
@@ -43,6 +44,8 @@ const remoteDshConfigText = $('#remote-dsh-config-text');
 const remoteDshUpdate = $('#remote-dsh-update');
 const remoteDshUpdateText = $('#remote-dsh-update-text');
 const remoteDshActionsSecondary = $('#remote-dsh-actions-secondary');
+const installProgress = $('#install-progress');
+const installProgressText = $('#install-progress-text');
 let currentState = null;
 let busy = false;
 
@@ -67,6 +70,7 @@ function updateMode() {
   const showControls = selected === 'managedSsh';
   autoStartRemoteDsh.closest('.checkbox-label').hidden = !showControls;
   autoStopRemoteDsh.closest('.checkbox-label').hidden = !showControls;
+  autoInstallRemoteDsh.closest('.checkbox-label').hidden = !showControls;
   if (!showControls) { remoteDshControls.hidden = true; remoteDshStatus.hidden = true; remoteDshActions.hidden = true; remoteDshActionsSecondary.hidden = true; remoteDshInfo.hidden = true; remoteDshDetails.hidden = true; remoteDshLog.hidden = true; remoteDshConfig.hidden = true; remoteDshUpdate.hidden = true; }
   if (!busy) for (const element of form.querySelectorAll('input,select,button')) element.disabled = false;
 }
@@ -81,6 +85,7 @@ function render(snapshot) {
   const messages = {
     idle: '尚未连接。',
     connecting: snapshot.mode === 'managedSsh' ? '正在启动 SSH 隧道…' : snapshot.mode === 'external' ? '正在检查现有 SSH 隧道…' : '正在启动本机 DSH…',
+    installing: '正在安装 DSH，请稍候...',
     connected: `已连接：${snapshot.endpoint}`,
     error: snapshot.error || '连接失败。',
   };
@@ -90,6 +95,20 @@ function render(snapshot) {
   retryButton.hidden = snapshot.state !== 'error';
   disconnectButton.hidden = snapshot.state !== 'connected';
   useLocalButton.hidden = snapshot.state !== 'error' || snapshot.mode === 'local';
+
+  // Installation progress
+  if (snapshot.state === 'installing') {
+    installProgress.hidden = false;
+    const phaseMessages = {
+      checking: '正在检查环境...',
+      preparing: '正在准备安装...',
+      installing: '正在下载并安装 DSH，请稍候...',
+      done: '安装完成，正在启动...',
+    };
+    installProgressText.textContent = phaseMessages[snapshot.progress?.phase] || '正在安装 DSH...';
+  } else {
+    installProgress.hidden = true;
+  }
   const showRemoteDsh = snapshot.mode === 'managedSsh' && snapshot.state === 'connected';
   remoteDshControls.hidden = !showRemoteDsh;
   remoteDshStatus.hidden = !showRemoteDsh;
@@ -132,6 +151,7 @@ function buildSettings() {
       remotePort: managedActive ? port(remotePort, '远程 DSH 端口') : validPortOrDefault(remotePort, 3080),
       identityFile: identityFile.value.trim() || null, hostKeyPolicy: hostKeyPolicy.value || 'accept-new',
         autoStartRemoteDsh: autoStartRemoteDsh.checked, autoStopRemoteDsh: autoStopRemoteDsh.checked,
+        autoInstallRemoteDsh: autoInstallRemoteDsh.checked,
     },
   };
 }
@@ -146,6 +166,7 @@ function applyState(initial) {
     hostKeyPolicy.value = settings.managedSsh.hostKeyPolicy;
     autoStartRemoteDsh.checked = settings.managedSsh.autoStartRemoteDsh ?? true;
     autoStopRemoteDsh.checked = settings.managedSsh.autoStopRemoteDsh ?? true;
+    autoInstallRemoteDsh.checked = settings.managedSsh.autoInstallRemoteDsh ?? true;
   }
   warningElement.hidden = !initial.warning; warningElement.textContent = initial.warning || '';
   updateMode(); updatePreview(); render(initial);

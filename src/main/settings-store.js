@@ -8,7 +8,7 @@ const ROOT_KEYS = new Set(['schemaVersion', 'mode', 'externalTunnel', 'managedSs
 const EXTERNAL_KEYS = new Set(['localPort']);
 const MANAGED_KEYS = new Set([
   'host', 'username', 'sshPort', 'localPort', 'remotePort', 'identityFile', 'hostKeyPolicy',
-  'autoStartRemoteDsh', 'autoStopRemoteDsh',
+  'autoStartRemoteDsh', 'autoStopRemoteDsh', 'autoInstallRemoteDsh',
 ]);
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     hostKeyPolicy: 'accept-new',
     autoStartRemoteDsh: true,
     autoStopRemoteDsh: true,
+    autoInstallRemoteDsh: true,
   }),
 });
 
@@ -90,6 +91,9 @@ function validateManagedSsh(value, required) {
   if (value.autoStopRemoteDsh !== undefined && typeof value.autoStopRemoteDsh !== 'boolean') {
     throw new TypeError('autoStopRemoteDsh must be a boolean');
   }
+  if (value.autoInstallRemoteDsh !== undefined && typeof value.autoInstallRemoteDsh !== 'boolean') {
+    throw new TypeError('autoInstallRemoteDsh must be a boolean');
+  }
   return {
     host,
     username,
@@ -100,6 +104,7 @@ function validateManagedSsh(value, required) {
     hostKeyPolicy: value.hostKeyPolicy,
     autoStartRemoteDsh: value.autoStartRemoteDsh ?? true,
     autoStopRemoteDsh: value.autoStopRemoteDsh ?? true,
+    autoInstallRemoteDsh: value.autoInstallRemoteDsh ?? true,
   };
 }
 

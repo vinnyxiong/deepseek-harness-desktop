@@ -1,0 +1,46 @@
+appId: com.deepseek.harness
+productName: DeepSeek Harness
+copyright: Copyright DeepSeek
+directories:
+  output: release-lite
+  buildResources: build
+
+files:
+  - src/**/*
+  # Lite build: do NOT bundle @deepseek-ai packages — they will be
+  # auto-installed on first launch via npm.
+  - node_modules/**/*
+  - package.json
+  - "!node_modules/.cache/**"
+  - "!node_modules/@deepseek-ai/**"
+
+asar: true
+# No asarUnpack needed for @deepseek-ai packages since they are excluded.
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  artifactName: DeepSeek-Harness-Lite-${version}-mac-${arch}.${ext}
+  hardenedRuntime: true
+  target:
+    - dmg
+    - zip
+
+win:
+  icon: build/icon.ico
+  artifactName: DeepSeek-Harness-Lite-${version}-win-${arch}.${ext}
+  target:
+    - nsis
+    - portable
+
+linux:
+  icon: build/icon-512.png
+  category: Development
+  artifactName: DeepSeek-Harness-Lite-${version}-linux-${arch}.${ext}
+  target:
+    - AppImage
+    - deb
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

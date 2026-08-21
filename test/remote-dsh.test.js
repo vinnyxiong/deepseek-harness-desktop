@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
-const { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, updateRemoteDsh } = require('../src/main/remote-dsh');
+const { buildRemoteSshArgs, checkRemoteDshInstalled, checkRemoteNpmAvailable, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, installRemoteDsh, startRemoteDsh, stopRemoteDsh, updateRemoteDsh } = require('../src/main/remote-dsh');
 
 const settings = {
   host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
@@ -205,5 +205,107 @@ test('updateRemoteDsh throws on SSH failure', async () => {
   await assert.rejects(
     () => updateRemoteDsh(settings, { spawnImpl: () => spawnWithOutput('', 1) }),
     /SSH command exited/,
+  );
+});
+
+test('checkRemoteNpmAvailable returns true when npm is found', async () => {
+  const result = await checkRemoteNpmAvailable(settings, { spawnImpl: () => spawnWithOutput('10.2.0\nnpm:ok') });
+  assert.equal(result, true);
+});
+
+test('checkRemoteNpmAvailable returns false when npm is missing', async () => {
+  const result = await checkRemoteNpmAvailable(settings, { spawnImpl: () => spawnWithOutput('npm:missing') });
+  assert.equal(result, false);
+});
+
+test('checkRemoteDshInstalled returns true when DSH is installed', async () => {
+  const result = await checkRemoteDshInstalled(settings, { spawnImpl: () => spawnWithOutput('installed') });
+  assert.equal(result, true);
+});
+
+test('checkRemoteDshInstalled returns false when DSH is missing', async () => {
+  const result = await checkRemoteDshInstalled(settings, { spawnImpl: () => spawnWithOutput('missing') });
+  assert.equal(result, false);
+});
+
+test('installRemoteDsh runs npm install on remote', async () => {
+  const stdout = 'added 200 packages in 30s';
+  const result = await installRemoteDsh(settings, { spawnImpl: () => spawnWithOutput(stdout) });
+  assert.ok(result.output.includes('added 200 packages'));
+});
+
+test('startRemoteDsh with autoInstall false skips the install check', async () => {
+  const result = await startRemoteDsh(settings, { autoInstall: false, spawnImpl: () => spawnWithOutput('started:9999') });
+  assert.deepEqual(result, { status: 'started', pid: 9999 });
+});
+
+test('startRemoteDsh with autoInstall true installs when DSH is missing', async () => {
+  let callCount = 0;
+  const spawnWithSequence = (cmd, args, opts) => {
+    const child = new EventEmitter();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.pid = 9000 + callCount;
+    child.kill = () => {};
+    callCount += 1;
+
+    process.nextTick(() => {
+      if (callCount === 1) {
+        // First call: DSH not installed
+        child.stdout.write('missing');
+        child.emit('exit', 0, null);
+      } else if (callCount === 2) {
+        // Second call: npm is available
+        child.stdout.write('10.2.0\nnpm:ok');
+        child.emit('exit', 0, null);
+      } else if (callCount === 3) {
+        // Third call: installation succeeds
+        child.stdout.write('added 200 packages');
+        child.emit('exit', 0, null);
+      } else if (callCount === 4) {
+        // Fourth call (recheck): DSH is now installed
+        child.stdout.write('installed');
+        child.emit('exit', 0, null);
+      } else {
+        // Start command
+        child.stdout.write('started:9999');
+        child.emit('exit', 0, null);
+      }
+    });
+    return child;
+  };
+
+  const result = await startRemoteDsh(settings, { autoInstall: true, spawnImpl: spawnWithSequence });
+  assert.deepEqual(result, { status: 'started', pid: 9999 });
+  assert.ok(callCount >= 5, `should have called check, npm check, install, recheck, and start, got ${callCount} calls`);
+});
+
+test('startRemoteDsh with autoInstall throws when npm is missing on remote', async () => {
+  let callCount = 0;
+  const spawnWithSequence = () => {
+    const child = new EventEmitter();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.pid = 9000 + callCount;
+    child.kill = () => {};
+    callCount += 1;
+
+    process.nextTick(() => {
+      if (callCount === 1) {
+        // DSH not installed
+        child.stdout.write('missing');
+        child.emit('exit', 0, null);
+      } else {
+        // npm is missing
+        child.stdout.write('npm:missing');
+        child.emit('exit', 0, null);
+      }
+    });
+    return child;
+  };
+
+  await assert.rejects(
+    () => startRemoteDsh(settings, { autoInstall: true, spawnImpl: spawnWithSequence }),
+    /npm/,
   );
 });

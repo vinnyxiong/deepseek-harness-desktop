@@ -146,6 +146,51 @@ h1 {
 .message.success { border-color: #ccebd9; background: var(--success-bg); color: var(--success); }
 .message.warning { border-color: #f7ddb1; background: var(--warning-bg); color: var(--warning); }
 
+.install-progress {
+  display: flex;
+  align-items: center;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #dbe3ff;
+  border-radius: var(--radius-sm);
+  background: #edf2ff;
+}
+
+.install-progress[hidden] { display: none; }
+
+.install-progress-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #3451a7;
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.install-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid #c4d0f0;
+  border-top-color: #3451a7;
+  border-radius: 50%;
+  animation: install-spin 0.8s linear infinite;
+}
+
+@keyframes install-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-color-scheme: dark) {
+  .install-progress {
+    border-color: #344873;
+    background: #1d2c4c;
+  }
+  .install-progress-inner { color: #a7c1ff; }
+  .install-spinner {
+    border-color: #3a5180;
+    border-top-color: #a7c1ff;
+  }
+}
+
 .surface,
 .managed-configuration {
   border: 1px solid var(--line);
@@ -684,4 +729,5 @@ select:disabled { cursor: not-allowed; opacity: .55; }
   *,
   *::before,
   *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .install-spinner { animation: none; opacity: 0.5; }
 }

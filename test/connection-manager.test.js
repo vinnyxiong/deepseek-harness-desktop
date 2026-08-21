@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { ConnectionManager, tunnelHandle } = require('../src/main/connection-manager');
+const { DshNotInstalledError } = require('../src/main/local-dsh');
 
 function settings(mode, port = 3080) {
   return {
@@ -10,7 +11,7 @@ function settings(mode, port = 3080) {
     managedSsh: {
       host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
       localPort: port, remotePort: 3080, identityFile: null, hostKeyPolicy: 'accept-new',
-      autoStartRemoteDsh: true, autoStopRemoteDsh: true,
+      autoStartRemoteDsh: true, autoStopRemoteDsh: true, autoInstallRemoteDsh: true,
     },
   };
 }
@@ -419,5 +420,107 @@ test('stopRemoteDsh updates state', async () => {
   const result = await manager.stopRemoteDsh();
   assert.equal(result.running, false);
   assert.equal(result.pid, null);
+  await manager.dispose();
+});
+
+test('localDshInstaller is triggered when startLocal throws DshNotInstalledError', async () => {
+  let installCalled = false;
+  let startAttempts = 0;
+  const manager = new ConnectionManager({
+    startLocal: async () => {
+      startAttempts += 1;
+      if (startAttempts === 1) throw new DshNotInstalledError();
+      return { mode: 'local', endpoint: 'http://127.0.0.1:4100', owned: true, async stop() {} };
+    },
+    health: fakeHealth(),
+    localDshInstaller: {
+      async install({ onProgress }) {
+        installCalled = true;
+        onProgress?.('installing');
+        return { success: true };
+      },
+    },
+  });
+  const snapshot = await manager.connect(settings('local'));
+  assert.equal(installCalled, true);
+  assert.equal(startAttempts, 2);
+  assert.equal(snapshot.state, 'connected');
+  await manager.dispose();
+});
+
+test('localDshInstaller failure is surfaced as an error', async () => {
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new DshNotInstalledError(); },
+    health: fakeHealth(),
+    localDshInstaller: {
+      async install() {
+        return { success: false };
+      },
+    },
+  });
+  await assert.rejects(
+    () => manager.connect(settings('local')),
+    /installation failed/,
+  );
+  await manager.dispose();
+});
+
+test('snapshot includes progress field', async () => {
+  const manager = new ConnectionManager({
+    startLocal: async () => ({
+      mode: 'local', endpoint: 'http://127.0.0.1:4100', owned: true, async stop() {},
+    }),
+    health: fakeHealth(),
+  });
+  const snapshot = await manager.connect(settings('local'));
+  assert.equal(snapshot.progress, null);
+  await manager.dispose();
+});
+
+test('autoInstall option is passed to startRemoteDsh', async () => {
+  let receivedOpts = null;
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async (settings, opts) => {
+        receivedOpts = opts;
+        return { status: 'started', pid: 9999 };
+      },
+      stopRemoteDsh: async () => {},
+      getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
+    },
+  });
+  await manager.connect(settings('managedSsh'));
+  assert.deepEqual(receivedOpts, { autoInstall: true });
+  await manager.dispose();
+});
+
+test('autoInstall false when setting is disabled', async () => {
+  let receivedOpts = null;
+  const manager = new ConnectionManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() {},
+    }),
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async (settings, opts) => {
+        receivedOpts = opts;
+        return { status: 'started', pid: 9999 };
+      },
+      stopRemoteDsh: async () => {},
+      getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
+    },
+  });
+  const s = settings('managedSsh');
+  s.managedSsh.autoInstallRemoteDsh = false;
+  await manager.connect(s);
+  assert.deepEqual(receivedOpts, { autoInstall: false });
   await manager.dispose();
 });

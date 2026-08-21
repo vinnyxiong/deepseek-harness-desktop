@@ -64,8 +64,43 @@ function runRemoteCommand(settings, command, {
   });
 }
 
-async function startRemoteDsh(settings, opts) {
+async function checkRemoteNpmAvailable(settings, opts = {}) {
+  const command = 'npm --version 2>/dev/null && echo "npm:ok" || echo "npm:missing"';
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
+  return stdout.includes('npm:ok');
+}
+
+async function checkRemoteDshInstalled(settings, opts = {}) {
+  const command = 'test -x ~/.local/state/dsh/runner/node_modules/.bin/dsh && echo "installed" || echo "missing"';
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
+  return stdout.includes('installed');
+}
+
+async function installRemoteDsh(settings, opts = {}) {
+  const command = 'mkdir -p ~/.local/state/dsh/runner && npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund @deepseek-ai/dsh 2>&1';
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 120_000 });
+  return { output: stdout };
+}
+
+async function startRemoteDsh(settings, opts = {}) {
   const port = settings.remotePort;
+
+  // Auto-install if requested and DSH is not on the remote machine
+  if (opts.autoInstall === true) {
+    const installed = await checkRemoteDshInstalled(settings, opts);
+    if (!installed) {
+      const npmOk = await checkRemoteNpmAvailable(settings, opts);
+      if (!npmOk) {
+        throw new Error('Remote machine does not have npm. Please install Node.js and npm on the remote machine, or disable "Auto-install remote DSH" in connection settings.');
+      }
+      await installRemoteDsh(settings, opts);
+      const recheck = await checkRemoteDshInstalled(settings, opts);
+      if (!recheck) {
+        throw new Error('DSH installation on the remote machine completed but the binary was not found. Check npm output for errors.');
+      }
+    }
+  }
+
   const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "already-running:$PID"; else nohup dsh web --port ${port} >/dev/null 2>&1 & echo $! > /tmp/dsh-web-${port}.pid; echo "started:$!"; fi`;
   const { stdout } = await runRemoteCommand(settings, command, opts);
   const match = stdout.match(/^(already-running|started):(\d+)$/);
@@ -133,4 +168,4 @@ async function updateRemoteDsh(settings, opts) {
   return { output: stdout };
 }
 
-module.exports = { buildRemoteSshArgs, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, updateRemoteDsh };
+module.exports = { buildRemoteSshArgs, checkRemoteDshInstalled, checkRemoteNpmAvailable, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, installRemoteDsh, startRemoteDsh, stopRemoteDsh, updateRemoteDsh };

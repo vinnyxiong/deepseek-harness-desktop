@@ -19,6 +19,12 @@
     </header>
 
     <section id="status" class="message status-message" aria-live="polite">正在读取设置…</section>
+    <section id="install-progress" class="install-progress" aria-live="polite" hidden>
+      <div class="install-progress-inner">
+        <span class="install-spinner" aria-hidden="true"></span>
+        <span id="install-progress-text">正在安装 DSH...</span>
+      </div>
+    </section>
     <section id="warning" class="message warning" aria-live="polite" hidden></section>
 
     <form id="connection-form" aria-busy="false">
@@ -111,6 +117,7 @@
           <div class="automation-options">
             <label class="checkbox-label"><input id="auto-start-remote-dsh" type="checkbox"><span><strong>连接时自动启动远程 DSH</strong><small>建立隧道前检查并启动远程服务。</small></span></label>
             <label class="checkbox-label"><input id="auto-stop-remote-dsh" type="checkbox"><span><strong>断开时自动停止远程 DSH</strong><small>仅停止由此连接管理的远程服务。</small></span></label>
+            <label class="checkbox-label"><input id="auto-install-remote-dsh" type="checkbox"><span><strong>连接时自动安装远程 DSH</strong><small>远程机器未安装 DSH 时，自动通过 npm 安装。</small></span></label>
           </div>
         </section>
 
