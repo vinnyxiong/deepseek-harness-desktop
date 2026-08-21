@@ -42,7 +42,7 @@ async function installDshLocal({
       '--no-fund',
       '@deepseek-ai/dsh',
     ], {
-      shell: process.platform === 'win32',
+      shell: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       env: { ...process.env },
@@ -92,7 +92,9 @@ async function installDshLocal({
         resolve({ success: true, path: INSTALLED_DSH_BIN });
       } else {
         const errorOutput = stderr || stdout || '';
-        if (errorOutput.includes('EACCES') || errorOutput.includes('permission denied')) {
+        if (code === 127) {
+          reject(new Error('npm is not available. Please install Node.js and npm first.'));
+        } else if (errorOutput.includes('EACCES') || errorOutput.includes('permission denied')) {
           reject(new Error(`Permission denied when installing DSH. Check permissions on ${DSH_RUNNER_DIR}.`));
         } else if (errorOutput.includes('ENOSPC') || errorOutput.includes('No space left')) {
           reject(new Error('Not enough disk space to install DSH.'));
