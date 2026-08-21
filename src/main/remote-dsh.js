@@ -1,6 +1,7 @@
 const { spawn } = require('child_process');
 const { buildCommonSshOptions, DEFAULT_SSH_PATH } = require('./managed-ssh');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
+const { DSH_PACKAGE_SPEC } = require('./dsh-installer');
 
 const COMMAND_TIMEOUT_MS = 15_000;
 
@@ -79,7 +80,7 @@ async function checkRemoteDshInstalled(settings, opts = {}) {
 }
 
 async function installRemoteDsh(settings, opts = {}) {
-  const command = 'mkdir -p ~/.local/state/dsh/runner && npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund @deepseek-ai/dsh 2>&1';
+  const command = `mkdir -p ~/.local/state/dsh/runner && npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 120_000 });
   return { output: stdout };
 }
@@ -165,7 +166,7 @@ async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
 }
 
 async function updateRemoteDsh(settings, opts = {}) {
-  const command = 'npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund @deepseek-ai/dsh 2>&1; echo "---"; dsh --version 2>/dev/null || echo "version-unknown"';
+  const command = `npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1; echo "---"; dsh --version 2>/dev/null || echo "version-unknown"`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 120_000 });
   return { output: stdout };
 }

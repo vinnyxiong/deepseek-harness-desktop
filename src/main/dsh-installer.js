@@ -9,6 +9,22 @@ const INSTALLED_DSH_BIN = path.join(DSH_RUNNER_DIR, 'node_modules', '@deepseek-a
 
 const INSTALL_TIMEOUT_MS = 600_000;
 
+// Pin the DSH version to the one this app was built against, so the lite
+// build never pulls a broken "latest" whose transitive deps may be missing
+// from the registry. Falls back to a known-good version if unreadable.
+function resolveDshVersion() {
+  try {
+    const pkg = require('../../package.json');
+    const v = pkg.dependencies?.['@deepseek-ai/dsh'];
+    if (v) return v;
+  } catch { /* ignore */ }
+  return '0.1.0-rc.6';
+}
+
+const DSH_VERSION = resolveDshVersion();
+const DSH_PACKAGE_SPEC = `@deepseek-ai/dsh@${DSH_VERSION}`;
+
+
 function isDshInstalled() {
   try {
     fs.accessSync(INSTALLED_DSH_BIN, fs.constants.X_OK);
@@ -114,7 +130,7 @@ async function installDshLocal({
       '--prefix', DSH_RUNNER_DIR,
       '--no-audit',
       '--no-fund',
-      '@deepseek-ai/dsh',
+      DSH_PACKAGE_SPEC,
     ], {
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -180,6 +196,8 @@ module.exports = {
   DSH_RUNNER_DIR,
   INSTALLED_DSH_BIN,
   INSTALL_TIMEOUT_MS,
+  DSH_VERSION,
+  DSH_PACKAGE_SPEC,
   findBin,
   getInstalledDshBinPath,
   installDshLocal,
