@@ -80,8 +80,8 @@ async function checkRemoteDshInstalled(settings, opts = {}) {
 }
 
 async function installRemoteDsh(settings, opts = {}) {
-  const command = `mkdir -p ~/.local/state/dsh/runner && npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 120_000 });
+  const command = `mkdir -p ~/.local/state/dsh/runner && npm install --prefer-offline --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }
 
@@ -166,8 +166,8 @@ async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
 }
 
 async function updateRemoteDsh(settings, opts = {}) {
-  const command = `npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1; echo "---"; dsh --version 2>/dev/null || echo "version-unknown"`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 120_000 });
+  const command = `npm install --prefer-offline --prefix ~/.local/state/dsh/runner --no-audit --no-fund ${DSH_PACKAGE_SPEC} 2>&1; echo "---"; dsh --version 2>/dev/null || echo "version-unknown"`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }
 

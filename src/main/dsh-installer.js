@@ -7,7 +7,7 @@ const DSH_STATE_DIR = path.join(os.homedir(), '.local', 'state', 'dsh');
 const DSH_RUNNER_DIR = path.join(DSH_STATE_DIR, 'runner');
 const INSTALLED_DSH_BIN = path.join(DSH_RUNNER_DIR, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
 
-const INSTALL_TIMEOUT_MS = 600_000;
+const INSTALL_TIMEOUT_MS = 900_000;
 
 // Pin the DSH version to the one this app was built against, so the lite
 // build never pulls a broken "latest" whose transitive deps may be missing
@@ -39,29 +39,39 @@ function getInstalledDshBinPath() {
 }
 
 // Extract a short progress label from npm output.
-// npm writes most progress to stderr with control chars and progress bars.
+// npm writes progress to stderr with control chars and progress bars.
 // We buffer chunks and extract meaningful patterns.
 let _npmBuf = '';
 
 function npmProgressLabel(text) {
   _npmBuf += text;
-  // Keep only the last 2KB to avoid unbounded growth
-  if (_npmBuf.length > 2048) _npmBuf = _npmBuf.slice(-2048);
+  // Keep only the last 4KB to avoid unbounded growth
+  if (_npmBuf.length > 4096) _npmBuf = _npmBuf.slice(-4096);
 
-  // Strip control characters to get clean lines
-  const clean = _npmBuf.replace(/\r[^\n]*/g, '\n').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, '').replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '').trim();
+  // Strip ANSI control characters and progress spinners to get clean lines
+  const clean = _npmBuf
+    .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')  // ANSI escape sequences
+    .replace(/[\r\x00-\x08\x0b\x0c\x0e-\x1f]/g, '\n')  // control chars
+    .replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '')  // braille spinners
+    .trim();
 
   const patterns = [
-    // npm v10+ reify output
-    { re: /(?:added|removed|changed) (\d+) packages?/, label: (m) => `已安装 ${m[1]} 个包` },
-    { re: /reify:.*?timing.*?Completed in/i, label: () => '正在完成安装...' },
-    { re: /idealTree:timing/i, label: () => '正在解析依赖树...' },
-    { re: /idealTree:.*?diff/i, label: () => '正在计算依赖差异...' },
+    // npm v10+ reify output (most common)
+    { re: /added\s+(\d+)\s+packages?(?:\s+in\s+(\d+)s)?/i, label: (m) => `已安装 ${m[1]} 个包${m[2] ? ` (${m[2]}s)` : ''}` },
+    { re: /(?:added|removed|changed)\s+(\d+)\s+packages?/i, label: (m) => `已安装 ${m[1]} 个包` },
+    // npm v10+ reify stages
+    { re: /reify:.*?Completed\s+in\s+(\d+)/i, label: (m) => `安装完成 (${m[1]}ms)` },
+    { re: /reify:timing\s+reifyNode:node_modules/i, label: () => '正在安装包...' },
+    { re: /reify:timing\s+reify/i, label: () => '正在安装包...' },
+    { re: /reify:timing\s+audit/i, label: () => '正在审计...' },
     { re: /reify:timing/i, label: () => '正在安装包...' },
+    { re: /idealTree:timing\s+diff/i, label: () => '正在计算依赖差异...' },
+    { re: /idealTree:timing/i, label: () => '正在解析依赖树...' },
     { re: /reify:@deepseek/i, label: () => '正在安装 DSH...' },
-    { re: /http fetch GET \d+/i, label: () => '正在下载包...' },
-    // Simple fallback: any line with "fetch" or "install" or "package"
-    { re: /(?:packages?|fetch|install|download|resolve)/i, label: () => '正在安装 DSH...' },
+    // http fetch progress
+    { re: /http\s+fetch\s+GET\s+\d+/i, label: () => '正在下载包...' },
+    // Any package-related progress
+    { re: /(?:packages?|fetch|install|download|resolve|reify|idealTree)/i, label: () => '正在安装 DSH...' },
   ];
 
   for (const p of patterns) {
@@ -130,6 +140,7 @@ async function installDshLocal({
       '--prefix', DSH_RUNNER_DIR,
       '--no-audit',
       '--no-fund',
+      '--prefer-offline',
       DSH_PACKAGE_SPEC,
     ], {
       shell: false,
