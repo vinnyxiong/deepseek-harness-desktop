@@ -30,7 +30,7 @@ class ConnectionManager extends EventEmitter {
     this.pendingCleanup = Promise.resolve();
     this.pendingCleanupHandle = null;
     this.ownedHandles = new Set();
-    this.remoteDshState = { running: false, pid: null };
+    this.remoteDshState = { running: false, pid: null, port: null };
     this.snapshot = { state: 'idle', mode: null, endpoint: null, error: null, progress: null };
   }
 
@@ -94,17 +94,19 @@ class ConnectionManager extends EventEmitter {
         }
       }
     } else if (settings.mode === 'managedSsh') {
+      let dynamicRemotePort = null;
       // Auto-start remote DSH before creating the tunnel
       if (this.remoteDsh && settings.managedSsh.autoStartRemoteDsh !== false) {
         try {
           const result = await this.remoteDsh.startRemoteDsh(settings.managedSsh, {
             autoInstall: settings.managedSsh.autoInstallRemoteDsh !== false,
           });
-          this.remoteDshState = { running: true, pid: result.pid };
+          dynamicRemotePort = result.port;
+          this.remoteDshState = { running: true, pid: result.pid, port: result.port };
         } catch (error) {
           // Log but don't fail — user may have started DSH manually
           console.error('Failed to auto-start remote DSH:', error.message);
-          this.remoteDshState = { running: false, pid: null };
+          this.remoteDshState = { running: false, pid: null, port: null };
           // If auto-install was requested and the error is about prerequisites,
           // surface it to the user
           if (settings.managedSsh.autoInstallRemoteDsh !== false &&
@@ -113,7 +115,7 @@ class ConnectionManager extends EventEmitter {
           }
         }
       }
-      handle = await this.startManagedSsh(settings.managedSsh, details => this.handleUnexpectedOwnedExit(handle, details));
+      handle = await this.startManagedSsh(settings.managedSsh, details => this.handleUnexpectedOwnedExit(handle, details), dynamicRemotePort);
     } else {
       handle = externalTunnelHandle(settings.externalTunnel.localPort);
     }
@@ -293,11 +295,11 @@ class ConnectionManager extends EventEmitter {
     // Auto-stop remote DSH after all tunnel handles are stopped
     if (this.remoteDsh && this.settings?.mode === 'managedSsh' && this.settings?.managedSsh?.autoStopRemoteDsh !== false) {
       try {
-        await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh);
+        await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh, this.remoteDshState.pid);
       } catch (error) {
         console.error('Failed to auto-stop remote DSH:', error.message);
       } finally {
-        this.remoteDshState = { running: false, pid: null };
+        this.remoteDshState = { running: false, pid: null, port: null };
       }
     }
     this.setSnapshot({ state: 'idle', mode: null, endpoint: null, error: null });
@@ -313,14 +315,14 @@ class ConnectionManager extends EventEmitter {
       throw new Error('Cannot restart remote DSH while not connected');
     }
     try {
-      await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh);
+      await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh, this.remoteDshState.pid);
     } catch (error) {
       // Ignore stop errors; the process might already be dead
     }
     const result = await this.remoteDsh.startRemoteDsh(this.settings.managedSsh, {
       autoInstall: this.settings.managedSsh.autoInstallRemoteDsh !== false,
     });
-    this.remoteDshState = { running: true, pid: result.pid };
+    this.remoteDshState = { running: true, pid: result.pid, port: result.port };
     this.setSnapshot(this.snapshot);
     return this.remoteDshState;
   }
@@ -329,8 +331,8 @@ class ConnectionManager extends EventEmitter {
     if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
       throw new Error('Remote DSH management is only available in managed SSH mode');
     }
-    await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh);
-    this.remoteDshState = { running: false, pid: null };
+    await this.remoteDsh.stopRemoteDsh(this.settings.managedSsh, this.remoteDshState.pid);
+    this.remoteDshState = { running: false, pid: null, port: null };
     this.setSnapshot(this.snapshot);
     return this.remoteDshState;
   }
@@ -346,14 +348,14 @@ class ConnectionManager extends EventEmitter {
     if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
       throw new Error('Remote DSH management is only available in managed SSH mode');
     }
-    return this.remoteDsh.getRemoteDshLog(this.settings.managedSsh);
+    return this.remoteDsh.getRemoteDshLog(this.settings.managedSsh, this.remoteDshState.pid);
   }
 
   async getRemoteDshProcessDetails() {
     if (!this.remoteDsh || !this.settings || this.settings.mode !== 'managedSsh') {
       throw new Error('Remote DSH management is only available in managed SSH mode');
     }
-    return this.remoteDsh.getRemoteDshProcessDetails(this.settings.managedSsh);
+    return this.remoteDsh.getRemoteDshProcessDetails(this.settings.managedSsh, this.remoteDshState.pid);
   }
 
   async getRemoteDshConfig() {
@@ -380,13 +382,13 @@ class ConnectionManager extends EventEmitter {
       return null;
     }
     try {
-      const status = await this.remoteDsh.getRemoteDshStatus(this.settings.managedSsh);
-      this.remoteDshState = { running: status.running, pid: status.pid };
+      const status = await this.remoteDsh.getRemoteDshStatus(this.settings.managedSsh, this.remoteDshState.pid);
+      this.remoteDshState = { running: status.running, pid: status.pid, port: this.remoteDshState.port };
       this.setSnapshot(this.snapshot);
       return status;
     } catch (error) {
-      this.remoteDshState = { running: false, pid: null };
-      return { running: false, pid: null };
+      this.remoteDshState = { running: false, pid: null, port: null };
+      return { running: false, pid: null, port: null };
     }
   }
 

@@ -25,6 +25,14 @@ function fakeHealth() {
   };
 }
 
+function fakeRemoteDsh() {
+  return {
+    startRemoteDsh: async () => ({ pid: 9999, port: 56789 }),
+    stopRemoteDsh: async () => {},
+    getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
+  };
+}
+
 test('connects to an existing tunnel without owning a process', async () => {
   const manager = new ConnectionManager({
     startLocal: async () => { throw new Error('not expected'); },
@@ -204,6 +212,8 @@ test('dispose waits for cleanup started by monitor failure', async () => {
   assert.equal(disposed, true);
 });
 
+// --- managed SSH tests ---
+
 test('managed SSH handles are owned and stopped on dispose', async () => {
   let stopped = 0;
   const manager = new ConnectionManager({
@@ -275,7 +285,7 @@ test('remoteDsh state is null for non-managedSsh modes', async () => {
       mode: 'local', endpoint: 'http://127.0.0.1:4100', owned: true, async stop() {},
     }),
     health: fakeHealth(),
-    remoteDsh: { startRemoteDsh: async () => {}, stopRemoteDsh: async () => {}, getRemoteDshStatus: async () => ({ running: false, pid: null }) },
+    remoteDsh: fakeRemoteDsh(),
   });
   await manager.connect(settings('local'));
   const snapshot = manager.getSnapshot();
@@ -291,11 +301,12 @@ test('snapshot includes remoteDsh state for managedSsh mode', async () => {
       isRunning: () => true, async stop() {},
     }),
     health: fakeHealth(),
-    remoteDsh: { startRemoteDsh: async () => ({ status: 'started', pid: 9999 }), stopRemoteDsh: async () => {}, getRemoteDshStatus: async () => ({ running: true, pid: 9999 }) },
+    remoteDsh: fakeRemoteDsh(),
   });
   const snapshot = await manager.connect(settings('managedSsh'));
   assert.equal(snapshot.remoteDsh.running, true);
   assert.equal(snapshot.remoteDsh.pid, 9999);
+  assert.equal(snapshot.remoteDsh.port, 56789);
   await manager.dispose();
 });
 
@@ -303,19 +314,19 @@ test('auto-start remote DSH before managed SSH tunnel creation', async () => {
   const calls = [];
   const manager = new ConnectionManager({
     startLocal: async () => { throw new Error('not expected'); },
-    startManagedSsh: async () => {
-      calls.push('tunnel');
+    startManagedSsh: async (settings, cb, remotePort) => {
+      calls.push(`tunnel:${remotePort}`);
       return { mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true, isRunning: () => true, async stop() {} };
     },
     health: fakeHealth(),
     remoteDsh: {
-      startRemoteDsh: async () => { calls.push('remote-start'); return { status: 'started', pid: 9999 }; },
+      startRemoteDsh: async () => { calls.push('remote-start'); return { pid: 9999, port: 56789 }; },
       stopRemoteDsh: async () => { calls.push('remote-stop'); },
       getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
     },
   });
   await manager.connect(settings('managedSsh'));
-  assert.deepEqual(calls, ['remote-start', 'tunnel']);
+  assert.deepEqual(calls, ['remote-start', 'tunnel:56789']);
   await manager.dispose();
   assert.ok(calls.includes('remote-stop'));
 });
@@ -350,7 +361,7 @@ test('does not auto-stop remote DSH when switching connections', async () => {
     }),
     health: fakeHealth(),
     remoteDsh: {
-      startRemoteDsh: async () => { calls.push('remote-start'); return { status: 'started', pid: 9999 }; },
+      startRemoteDsh: async () => { calls.push('remote-start'); return { pid: 9999, port: 56789 }; },
       stopRemoteDsh: async () => { calls.push('remote-stop'); },
       getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
     },
@@ -375,7 +386,7 @@ test('restartRemoteDsh stops then starts', async () => {
     }),
     health: fakeHealth(),
     remoteDsh: {
-      startRemoteDsh: async () => { calls.push('start'); return { status: 'started', pid: 10000 }; },
+      startRemoteDsh: async () => { calls.push('start'); return { pid: 10000, port: 56789 }; },
       stopRemoteDsh: async () => { calls.push('stop'); },
       getRemoteDshStatus: async () => ({ running: true, pid: 10000 }),
     },
@@ -386,6 +397,7 @@ test('restartRemoteDsh stops then starts', async () => {
   assert.deepEqual(calls, ['stop', 'start']);
   assert.equal(result.running, true);
   assert.equal(result.pid, 10000);
+  assert.equal(result.port, 56789);
   await manager.dispose();
 });
 
@@ -395,7 +407,7 @@ test('restartRemoteDsh throws when not in managedSsh mode', async () => {
       mode: 'local', endpoint: 'http://127.0.0.1:4100', owned: true, async stop() {},
     }),
     health: fakeHealth(),
-    remoteDsh: { startRemoteDsh: async () => {}, stopRemoteDsh: async () => {}, getRemoteDshStatus: async () => ({ running: false, pid: null }) },
+    remoteDsh: fakeRemoteDsh(),
   });
   await manager.connect(settings('local'));
   await assert.rejects(() => manager.restartRemoteDsh(), /only available in managed SSH mode/);
@@ -411,7 +423,7 @@ test('stopRemoteDsh updates state', async () => {
     }),
     health: fakeHealth(),
     remoteDsh: {
-      startRemoteDsh: async () => ({ status: 'started', pid: 9999 }),
+      startRemoteDsh: async () => ({ pid: 9999, port: 56789 }),
       stopRemoteDsh: async () => {},
       getRemoteDshStatus: async () => ({ running: false, pid: null }),
     },
@@ -420,8 +432,11 @@ test('stopRemoteDsh updates state', async () => {
   const result = await manager.stopRemoteDsh();
   assert.equal(result.running, false);
   assert.equal(result.pid, null);
+  assert.equal(result.port, null);
   await manager.dispose();
 });
+
+// --- localDshInstaller tests ---
 
 test('localDshInstaller is triggered when startLocal throws DshNotInstalledError', async () => {
   let installCalled = false;
@@ -489,7 +504,7 @@ test('autoInstall option is passed to startRemoteDsh', async () => {
     remoteDsh: {
       startRemoteDsh: async (settings, opts) => {
         receivedOpts = opts;
-        return { status: 'started', pid: 9999 };
+        return { pid: 9999, port: 56789 };
       },
       stopRemoteDsh: async () => {},
       getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),
@@ -512,7 +527,7 @@ test('autoInstall false when setting is disabled', async () => {
     remoteDsh: {
       startRemoteDsh: async (settings, opts) => {
         receivedOpts = opts;
-        return { status: 'started', pid: 9999 };
+        return { pid: 9999, port: 56789 };
       },
       stopRemoteDsh: async () => {},
       getRemoteDshStatus: async () => ({ running: true, pid: 9999 }),

@@ -71,7 +71,7 @@ async function initialize() {
     };
   }
 
-  manager = new ConnectionManager({ startLocal: onUnexpectedExit => startLocalDsh({ executablePath: process.execPath, resourcesPath: process.resourcesPath, isPackaged: app.isPackaged, dshHome: path.join(app.getPath('userData'), '.dsh'), onUnexpectedExit }), startManagedSsh: (managedSettings, onUnexpectedExit) => startManagedSsh({ settings: managedSettings, onUnexpectedExit }), remoteDsh: { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh }, localDshInstaller });
+  manager = new ConnectionManager({ startLocal: onUnexpectedExit => startLocalDsh({ executablePath: process.execPath, resourcesPath: process.resourcesPath, isPackaged: app.isPackaged, dshHome: path.join(app.getPath('userData'), '.dsh'), onUnexpectedExit }), startManagedSsh: (managedSettings, onUnexpectedExit, remotePort) => startManagedSsh({ settings: managedSettings, onUnexpectedExit, remotePort }), remoteDsh: { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh }, localDshInstaller });
   manager.setTargetSettings(settings);
   manager.on('status', snapshot => { windows.sendStatus({ ...snapshot, settings, warning: settingsWarning }); syncIntegrations(snapshot); buildMenu(); if (snapshot.state === 'error' && !snapshot.endpoint) windows.recoverToSettings(); });
   localeService.on('change', locale => { buildMenu(); windows.sendNotificationLocale(locale, locale === 'en' ? notificationStringsEn : notificationStringsZh); });

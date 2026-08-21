@@ -64,6 +64,8 @@ function runRemoteCommand(settings, command, {
   });
 }
 
+// --- Remote DSH lifecycle (no dsh-web dependency) ---
+
 async function checkRemoteNpmAvailable(settings, opts = {}) {
   const command = 'npm --version 2>/dev/null && echo "npm:ok" || echo "npm:missing"';
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
@@ -83,8 +85,6 @@ async function installRemoteDsh(settings, opts = {}) {
 }
 
 async function startRemoteDsh(settings, opts = {}) {
-  const port = settings.remotePort;
-
   // Auto-install if requested and DSH is not on the remote machine
   if (opts.autoInstall === true) {
     const installed = await checkRemoteDshInstalled(settings, opts);
@@ -101,69 +101,71 @@ async function startRemoteDsh(settings, opts = {}) {
     }
   }
 
-  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "already-running:$PID"; else nohup dsh web --port ${port} >/dev/null 2>&1 & echo $! > /tmp/dsh-web-${port}.pid; echo "started:$!"; fi`;
-  const { stdout } = await runRemoteCommand(settings, command, opts);
-  const match = stdout.match(/^(already-running|started):(\d+)$/);
-  if (!match) throw new Error(`Unexpected output from remote DSH start: ${stdout}`);
-  return { status: match[1], pid: Number(match[2]) };
+  // Start dsh web --port 0 on the remote machine, capture its PID and port.
+  // The shell script starts dsh in the background, then polls stdout for the
+  // port number (up to 30 seconds). Outputs "PID:<pid> PORT:<port>" on success.
+  const command = `nohup dsh web --port 0 > /tmp/dsh-remote-$$.log 2>&1 & PID=$!; for i in $(seq 1 30); do PORT=$(grep -oP 'http://127\\.0\\.0\\.1:\\K\\d+' /tmp/dsh-remote-$$.log 2>/dev/null); if [ -n "$PORT" ]; then echo "PID:$PID PORT:$PORT"; exit 0; fi; if ! kill -0 $PID 2>/dev/null; then echo "EXITED"; exit 1; fi; sleep 1; done; kill $PID 2>/dev/null; echo "TIMEOUT"; exit 1`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 45_000 });
+
+  const pidMatch = stdout.match(/PID:(\d+)/);
+  const portMatch = stdout.match(/PORT:(\d+)/);
+  if (!pidMatch || !portMatch) {
+    if (stdout.includes('EXITED')) throw new Error('Remote DSH exited before starting');
+    if (stdout.includes('TIMEOUT')) throw new Error('Remote DSH startup timed out (30s)');
+    throw new Error(`Unexpected output from remote DSH start: ${stdout}`);
+  }
+  return { pid: Number(pidMatch[1]), port: Number(portMatch[1]) };
 }
 
-async function stopRemoteDsh(settings, opts) {
-  const port = settings.remotePort;
-  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); [ -n "$PID" ] && kill $PID 2>/dev/null; rm -f /tmp/dsh-web-${port}.pid; echo "stopped"`;
-  const { stdout } = await runRemoteCommand(settings, command, opts);
-  return { status: stdout.includes('stopped') ? 'stopped' : 'unknown' };
-}
-
-async function getRemoteDshStatus(settings, opts) {
-  const port = settings.remotePort;
-  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "running:$PID"; else echo "stopped"; fi`;
+async function stopRemoteDsh(settings, pid, opts = {}) {
+  if (!pid) return { status: 'no-pid' };
+  const command = `kill ${pid} 2>/dev/null && echo "stopped" || echo "not-found"`;
   try {
     const { stdout } = await runRemoteCommand(settings, command, opts);
-    const match = stdout.match(/^running:(\d+)$/);
-    if (match) return { running: true, pid: Number(match[1]) };
+    return { status: stdout.includes('stopped') ? 'stopped' : 'not-found' };
+  } catch {
+    return { status: 'not-found' };
+  }
+}
+
+async function getRemoteDshStatus(settings, pid, opts = {}) {
+  if (!pid) return { running: false, pid: null };
+  const command = `kill -0 ${pid} 2>/dev/null && echo "running" || echo "stopped"`;
+  try {
+    const { stdout } = await runRemoteCommand(settings, command, opts);
+    if (stdout.includes('running')) return { running: true, pid };
     return { running: false, pid: null };
-  } catch (error) {
-    // If we can't reach the remote host, remote DSH is not running
+  } catch {
     return { running: false, pid: null };
   }
 }
 
-async function getRemoteDshVersion(settings, opts) {
-  const port = settings.remotePort;
-  // Use the full path to dsh-web since ~/.local/bin is not on PATH in
-  // non-interactive SSH sessions.
-  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PROCESS:$PID"; else echo "PROCESS:not-running"; fi; VER=$($HOME/.local/bin/dsh-web version 2>/dev/null || echo 'unknown'); echo "VERSION:$VER"`;
-  const { stdout } = await runRemoteCommand(settings, command, opts);
-  const lines = stdout.split('\n');
-  let version = '';
-  let processInfo = '';
-  for (const line of lines) {
-    if (line.startsWith('VERSION:')) version = line.slice(8);
-    else if (line.startsWith('PROCESS:')) processInfo = line.slice(8);
+async function getRemoteDshVersion(settings, opts = {}) {
+  try {
+    const command = 'dsh --version 2>/dev/null || echo "unknown"';
+    const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
+    return { version: stdout.trim() || 'unknown' };
+  } catch {
+    return { version: 'unknown' };
   }
-  const output = processInfo !== 'not-running'
-    ? `进程 PID: ${processInfo}`
-    : '远程 DSH 未运行';
-  return { version, output };
 }
 
-async function getRemoteDshLog(settings, opts) {
-  const port = settings.remotePort;
-  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "=== DSH PID: $PID ==="; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; echo ""; echo "=== RECENT LOGS (last 50 lines) ==="; tail -n 50 /proc/$PID/fd/1 2>/dev/null || echo "(cannot read process stdout)"; else echo "DSH not running on port ${port}"; fi`;
-  const { stdout } = await runRemoteCommand(settings, command, opts);
+async function getRemoteDshLog(settings, pid, opts = {}) {
+  if (!pid) return { output: 'Remote DSH is not running.' };
+  const command = `echo "=== DSH PID: ${pid} ==="; ps -p ${pid} -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; echo ""; echo "=== RECENT LOGS ==="; for f in /tmp/dsh-remote-*.log; do tail -n 50 "$f" 2>/dev/null && break; done || echo "(no log file found)"`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
   return { output: stdout };
 }
 
-async function getRemoteDshProcessDetails(settings, opts) {
-  const port = settings.remotePort;
-  const command = `PID=$(cat /tmp/dsh-web-${port}.pid 2>/dev/null); if [ -n "$PID" ] && kill -0 $PID 2>/dev/null; then echo "PID:$PID"; ps -p $PID -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; else echo "DSH not running on port ${port}"; fi`;
-  const { stdout } = await runRemoteCommand(settings, command, opts);
+async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
+  if (!pid) return { output: 'Remote DSH is not running.' };
+  const command = `echo "PID:${pid}"; ps -p ${pid} -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null || echo "Process not found"`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
   return { output: stdout };
 }
 
-async function updateRemoteDsh(settings, opts) {
-  const command = `$HOME/.local/bin/dsh-web update 2>&1`;
+async function updateRemoteDsh(settings, opts = {}) {
+  const command = 'npm install --prefix ~/.local/state/dsh/runner --no-audit --no-fund @deepseek-ai/dsh 2>&1; echo "---"; dsh --version 2>/dev/null || echo "version-unknown"';
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 120_000 });
   return { output: stdout };
 }

@@ -18,6 +18,11 @@ test('builds safe managed SSH argv without a shell command', () => {
   assert.deepEqual(args.slice(-4), ['-p', '22', '--', 'xiongyuanwen@10.37.117.240']);
 });
 
+test('buildManagedSshArgs accepts remotePort override', () => {
+  const args = buildManagedSshArgs(settings, 56789);
+  assert.deepEqual(args.slice(0, 5), ['-N', '-T', '-n', '-L', '127.0.0.1:3080:127.0.0.1:56789']);
+});
+
 test('adds identity and strict host-key options', () => {
   const args = buildManagedSshArgs({ ...settings, identityFile: '/tmp/id', hostKeyPolicy: 'strict' });
   assert.ok(args.includes('/tmp/id'));
