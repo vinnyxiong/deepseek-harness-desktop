@@ -104,7 +104,6 @@ function validateHost(host, index) {
     host: h,
     username: u,
     sshPort: validatePort(host.sshPort, `${prefix}.sshPort`),
-    localPort: validatePort(host.localPort, `${prefix}.localPort`),
     identityFile,
     hostKeyPolicy: host.hostKeyPolicy || 'accept-new',
     autoStartRemoteDsh: host.autoStartRemoteDsh ?? true,
@@ -146,17 +145,6 @@ function validateSettings(value) {
     throw new TypeError('At least one local host is required');
   }
 
-  // Local ports must be unique among remote hosts
-  const ports = new Set();
-  for (const h of hosts) {
-    if (h.type === 'remote') {
-      if (ports.has(h.localPort)) {
-        throw new TypeError(`Duplicate local port: ${h.localPort}`);
-      }
-      ports.add(h.localPort);
-    }
-  }
-
   return { schemaVersion: CURRENT_SCHEMA_VERSION, hosts };
 }
 
@@ -164,10 +152,6 @@ function migrateV2(value) {
   assertPlainObject(value, 'Settings');
   // v2: { mode, externalTunnel: { localPort }, managedSsh: { host, username, ... } }
   const hosts = cloneDefaults();
-
-  if (value.mode === 'local') {
-    return { schemaVersion: CURRENT_SCHEMA_VERSION, hosts };
-  }
 
   if (value.mode === 'managedSsh' && value.managedSsh) {
     const m = value.managedSsh;
@@ -178,29 +162,11 @@ function migrateV2(value) {
       host: m.host,
       username: m.username,
       sshPort: m.sshPort,
-      localPort: m.localPort || 3080,
       identityFile: m.identityFile || null,
       hostKeyPolicy: m.hostKeyPolicy || 'accept-new',
       autoStartRemoteDsh: m.autoStartRemoteDsh ?? true,
       autoStopRemoteDsh: m.autoStopRemoteDsh ?? true,
       autoInstallRemoteDsh: m.autoInstallRemoteDsh ?? true,
-    });
-  }
-
-  if (value.mode === 'external' && value.externalTunnel) {
-    hosts.push({
-      id: 'external',
-      name: '外部隧道',
-      type: 'remote',
-      host: 'tunnel',
-      username: 'tunnel',
-      sshPort: 22,
-      localPort: value.externalTunnel.localPort || 3080,
-      identityFile: null,
-      hostKeyPolicy: 'accept-new',
-      autoStartRemoteDsh: false,
-      autoStopRemoteDsh: false,
-      autoInstallRemoteDsh: false,
     });
   }
 

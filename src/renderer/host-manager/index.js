@@ -15,9 +15,6 @@ const installProgressText = $('#install-progress-text');
 const connectBtn = $('#connect-btn');
 const disconnectBtn = $('#disconnect-btn');
 const retryBtn = $('#retry-btn');
-const remoteControls = $('#remote-controls');
-const remoteDshStatus = $('#remote-dsh-status');
-const remoteDshStatusText = $('#remote-dsh-status-text');
 const sshConfig = $('#ssh-config');
 const startupOptions = $('#startup-options');
 const addDialog = $('#add-dialog');
@@ -28,7 +25,6 @@ const hostName = $('#host-name');
 const hostField = $('#host-field');
 const usernameField = $('#username-field');
 const sshPortField = $('#ssh-port-field');
-const localPortField = $('#local-port-field');
 const identityFileField = $('#identity-file-field');
 const hostKeyPolicyField = $('#host-key-policy-field');
 const autoStartField = $('#auto-start-field');
@@ -117,21 +113,6 @@ function renderDetail() {
   disconnectBtn.hidden = !isConnected;
   retryBtn.hidden = snap.state !== 'error';
 
-  // Remote controls
-  remoteControls.hidden = !isRemote || isTunnel;
-  if (isRemote && !isTunnel && isConnected) {
-    remoteDshStatus.hidden = false;
-    if (snap.remoteDsh?.running) {
-      remoteDshStatusText.textContent = `远程 DSH 运行中 (PID: ${snap.remoteDsh.pid})`;
-      remoteDshStatus.className = 'remote-status';
-    } else {
-      remoteDshStatusText.textContent = '远程 DSH 未运行';
-      remoteDshStatus.className = 'remote-status stopped';
-    }
-  } else {
-    remoteDshStatus.hidden = true;
-  }
-
   // Config form
   hostName.value = host.name || '';
   sshConfig.hidden = isLocal;
@@ -142,7 +123,6 @@ function renderDetail() {
     hostField.value = host.host || '';
     usernameField.value = host.username || '';
     sshPortField.value = host.sshPort || 22;
-    localPortField.value = host.localPort || 3080;
     identityFileField.value = host.identityFile || '';
     hostKeyPolicyField.value = host.hostKeyPolicy || 'accept-new';
     autoStartField.checked = host.autoStartRemoteDsh ?? true;
@@ -217,11 +197,11 @@ $('#save-btn').addEventListener('click', () => doAction(async () => {
     ...host,
     name: hostName.value.trim() || host.name,
   };
+  delete updated.localPort;
   if (host.type === 'remote') {
     updated.host = hostField.value.trim();
     updated.username = usernameField.value.trim();
     updated.sshPort = Number(sshPortField.value) || 22;
-    updated.localPort = Number(localPortField.value) || 3080;
     updated.identityFile = identityFileField.value.trim() || null;
     updated.hostKeyPolicy = hostKeyPolicyField.value;
     updated.autoStartRemoteDsh = autoStartField.checked;
@@ -255,45 +235,6 @@ addDialog.querySelectorAll('.add-option').forEach(btn => {
     if (last) selectHost(last.id);
   }));
 });
-
-// Remote DSH actions
-$('#restart-dsh-btn').addEventListener('click', () => doAction(async () => {
-  await api.restartRemoteDsh(selectedHostId);
-  await refresh();
-}));
-$('#stop-dsh-btn').addEventListener('click', () => doAction(async () => {
-  await api.stopRemoteDsh(selectedHostId);
-  await refresh();
-}));
-$('#check-version-btn').addEventListener('click', () => doAction(async () => {
-  const result = await api.getRemoteDshVersion(selectedHostId);
-  $('#remote-dsh-info').hidden = false;
-  $('#remote-dsh-version-text').textContent = result.version;
-}));
-$('#process-details-btn').addEventListener('click', () => doAction(async () => {
-  const result = await api.getRemoteDshProcessDetails(selectedHostId);
-  $('#remote-dsh-details').hidden = false;
-  $('#remote-dsh-details-text').textContent = result.output;
-  $('#remote-dsh-details').open = true;
-}));
-$('#view-log-btn').addEventListener('click', () => doAction(async () => {
-  const result = await api.getRemoteDshLog(selectedHostId);
-  $('#remote-dsh-log').hidden = false;
-  $('#remote-dsh-log-text').textContent = result.output;
-  $('#remote-dsh-log').open = true;
-}));
-$('#view-config-btn').addEventListener('click', () => doAction(async () => {
-  const result = await api.getRemoteDshConfig(selectedHostId);
-  $('#remote-dsh-config').hidden = false;
-  $('#remote-dsh-config-text').textContent = JSON.stringify(result, null, 2);
-  $('#remote-dsh-config').open = true;
-}));
-$('#update-dsh-btn').addEventListener('click', () => doAction(async () => {
-  $('#remote-dsh-update').hidden = false;
-  $('#remote-dsh-update-text').textContent = '正在更新远程 DSH，请稍候...';
-  const result = await api.updateRemoteDsh(selectedHostId);
-  $('#remote-dsh-update-text').textContent = result.output;
-}));
 
 // Status push
 api.onStatus((hostId, snapshot) => {

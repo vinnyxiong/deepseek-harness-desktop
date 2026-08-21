@@ -66,17 +66,6 @@ test('rejects duplicate host ids', () => {
   }), /Duplicate host id/);
 });
 
-test('rejects duplicate local ports', () => {
-  assert.throws(() => validateSettings({
-    schemaVersion: 3,
-    hosts: [
-      { id: 'local', name: '本机', type: 'local' },
-      { id: 'r1', name: 'A', type: 'remote', host: '10.0.0.1', username: 'root', sshPort: 22, localPort: 3080, hostKeyPolicy: 'accept-new' },
-      { id: 'r2', name: 'B', type: 'remote', host: '10.0.0.2', username: 'root', sshPort: 22, localPort: 3080, hostKeyPolicy: 'accept-new' },
-    ],
-  }), /Duplicate local port/);
-});
-
 test('rejects settings with no local host', () => {
   assert.throws(() => validateSettings({
     schemaVersion: 3,
@@ -103,7 +92,7 @@ test('migrates v2 managedSsh mode to v3', () => {
   const remote = s.hosts.find(h => h.type === 'remote');
   assert.ok(remote);
   assert.equal(remote.host, '10.0.0.1');
-  assert.equal(remote.localPort, 4123);
+  assert.equal(remote.localPort, undefined);
 });
 
 test('loads defaults when settings do not exist', async () => {

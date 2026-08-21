@@ -53,43 +53,6 @@
           <button id="retry-btn" hidden>重试</button>
         </div>
 
-        <!-- Remote DSH controls (hidden for local host) -->
-        <div id="remote-controls" class="remote-controls" hidden>
-          <div class="remote-status" id="remote-dsh-status" hidden>
-            <span class="status-dot" aria-hidden="true"></span>
-            <span id="remote-dsh-status-text"></span>
-          </div>
-          <div class="remote-actions">
-            <button id="restart-dsh-btn">重启远程 DSH</button>
-            <button id="stop-dsh-btn" class="danger">停止远程 DSH</button>
-          </div>
-          <div class="remote-actions-secondary">
-            <button id="check-version-btn">查看版本</button>
-            <button id="process-details-btn">进程详情</button>
-            <button id="view-log-btn">查看日志</button>
-            <button id="view-config-btn">查看配置</button>
-            <button id="update-dsh-btn">更新版本</button>
-          </div>
-          <div class="remote-info" id="remote-dsh-info" hidden>
-            <div class="info-row"><span>远程 DSH 版本</span><code id="remote-dsh-version-text">--</code></div>
-          </div>
-          <details class="remote-details" id="remote-dsh-details" hidden>
-            <summary>进程详情</summary>
-            <pre id="remote-dsh-details-text"></pre>
-          </details>
-          <details class="remote-details" id="remote-dsh-log" hidden>
-            <summary>远程 DSH 日志</summary>
-            <pre id="remote-dsh-log-text"></pre>
-          </details>
-          <details class="remote-details" id="remote-dsh-config" hidden>
-            <summary>远程 DSH 配置</summary>
-            <pre id="remote-dsh-config-text"></pre>
-          </details>
-          <div class="remote-update" id="remote-dsh-update" hidden>
-            <pre id="remote-dsh-update-text"></pre>
-          </div>
-        </div>
-
         <!-- Host config form -->
         <div id="config-form" class="config-form">
           <div class="config-section">
@@ -105,10 +68,9 @@
               <label><span>主机</span><input id="host-field" type="text" maxlength="253" placeholder="10.0.0.1"></label>
               <label><span>用户</span><input id="username-field" type="text" maxlength="64" placeholder="root"></label>
               <label><span>SSH 端口</span><input id="ssh-port-field" type="number" min="1" max="65535" value="22"></label>
-              <label><span>本地转发端口</span><input id="local-port-field" type="number" min="1" max="65535" value="3080"></label>
+              <label><span>私钥路径 <em>可选</em></span><input id="identity-file-field" type="text" placeholder="/Users/name/.ssh/id_ed25519"></label>
             </div>
             <div class="fields" style="margin-top: 12px;">
-              <label><span>私钥路径 <em>可选</em></span><input id="identity-file-field" type="text" placeholder="/Users/name/.ssh/id_ed25519"></label>
               <label><span>主机密钥验证</span><select id="host-key-policy-field"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
             </div>
           </div>

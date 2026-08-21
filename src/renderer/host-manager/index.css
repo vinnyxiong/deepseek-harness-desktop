@@ -125,7 +125,7 @@ body {
 .empty-state h3 { margin: 0 0 4px; font-size: 14px; color: var(--text); }
 .empty-state p { margin: 0; font-size: 12px; color: var(--text-muted); }
 
-.empty-state[hidden], .detail-panel[hidden], .remote-controls[hidden], #ssh-config[hidden], #startup-options[hidden] { display: none !important; }
+.empty-state[hidden], .detail-panel[hidden], #ssh-config[hidden], #startup-options[hidden] { display: none !important; }
 
 /* Status bar */
 .detail-status {
@@ -212,31 +212,6 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .checkbox-label strong { font-size: 12px; }
 .checkbox-label small { font-size: 11px; color: var(--text-muted); }
 
-/* Remote controls */
-.remote-controls {
-  padding: 12px; margin-bottom: 12px;
-  border: 1px solid var(--line); border-radius: var(--radius-md);
-  background: var(--surface-muted);
-}
-.remote-status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12px; font-weight: 600; }
-.remote-status[hidden] { display: none; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
-.remote-status.stopped .status-dot { background: var(--line-strong); }
-.remote-actions, .remote-actions-secondary { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
-.remote-info { margin-top: 12px; }
-.info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-.info-row code { font-family: monospace; font-size: 12px; }
-
-.remote-details { margin-top: 8px; }
-.remote-details summary { font-size: 12px; font-weight: 600; cursor: pointer; }
-.remote-details pre {
-  margin: 8px 0 0; padding: 12px; border-radius: 8px; background: #1e1e2e; color: #cdd6f4;
-  font-family: monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap;
-  max-height: 300px; overflow-y: auto;
-}
-.remote-update { margin-top: 8px; }
-.remote-update pre { margin: 0; padding: 12px; border-radius: 8px; background: #1e1e2e; color: #cdd6f4; font-family: monospace; font-size: 11px; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
-
 /* Dialog */
 dialog {
   border: none; border-radius: var(--radius-lg); padding: 0;
@@ -270,7 +245,6 @@ dialog::backdrop { background: rgba(0,0,0,.3); }
     --primary: #9088ff; --primary-strong: #aaa4ff; --primary-soft: #292850; --primary-ring: rgba(144, 136, 255, .25);
     --shadow: none;
   }
-  .remote-details pre, .remote-update pre { background: #10121d; }
   input, select { background: #1b1e2c; color: var(--text); }
 }
 

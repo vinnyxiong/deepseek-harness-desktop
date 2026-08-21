@@ -149,41 +149,29 @@ class HostManager extends EventEmitter {
         }
       }
     } else if (host.type === 'remote') {
-      if (host.host === 'tunnel') {
-        conn.progress = { phase: 'connecting', message: '正在连接外部隧道...' };
+      let dynamicRemotePort = null;
+      if (this.remoteDsh && host.autoStartRemoteDsh !== false) {
+        conn.progress = { phase: 'remote-start', message: '正在启动远程 DSH...' };
         this.emitStatus(host.id);
-        handle = {
-          mode: 'external',
-          endpoint: `http://127.0.0.1:${host.localPort}`,
-          port: host.localPort,
-          owned: false,
-          async stop() {},
-        };
-      } else {
-        let dynamicRemotePort = null;
-        if (this.remoteDsh && host.autoStartRemoteDsh !== false) {
-          conn.progress = { phase: 'remote-start', message: '正在启动远程 DSH...' };
+        try {
+          const result = await this.remoteDsh.startRemoteDsh(host, {
+            autoInstall: host.autoInstallRemoteDsh !== false,
+          });
+          dynamicRemotePort = result.port;
+          conn.remoteDshState = { running: true, pid: result.pid, port: result.port };
           this.emitStatus(host.id);
-          try {
-            const result = await this.remoteDsh.startRemoteDsh(host, {
-              autoInstall: host.autoInstallRemoteDsh !== false,
-            });
-            dynamicRemotePort = result.port;
-            conn.remoteDshState = { running: true, pid: result.pid, port: result.port };
-            this.emitStatus(host.id);
-          } catch (error) {
-            console.error('Failed to auto-start remote DSH:', error.message);
-            conn.remoteDshState = { running: false, pid: null, port: null };
-            if (host.autoInstallRemoteDsh !== false &&
-                (error.message.includes('npm') || error.message.includes('installation'))) {
-              throw error;
-            }
+        } catch (error) {
+          console.error('Failed to auto-start remote DSH:', error.message);
+          conn.remoteDshState = { running: false, pid: null, port: null };
+          if (host.autoInstallRemoteDsh !== false &&
+              (error.message.includes('npm') || error.message.includes('installation'))) {
+            throw error;
           }
         }
-        conn.progress = { phase: 'ssh-tunnel', message: '正在建立 SSH 隧道...' };
-        this.emitStatus(host.id);
-        handle = await this.startManagedSsh(host, details => this.handleUnexpectedExit(host.id, details), dynamicRemotePort);
       }
+      conn.progress = { phase: 'ssh-tunnel', message: '正在建立 SSH 隧道...' };
+      this.emitStatus(host.id);
+      handle = await this.startManagedSsh(host, details => this.handleUnexpectedExit(host.id, details), dynamicRemotePort);
     }
 
     handle.connectionSettings = host;
