@@ -7,12 +7,10 @@ directories:
 
 files:
   - src/**/*
-  # Lite build: do NOT bundle @deepseek-ai packages — they will be
-  # auto-installed on first launch via npm.
-  - node_modules/**/*
   - package.json
-  - "!node_modules/.cache/**"
-  - "!node_modules/@deepseek-ai/**"
+  # Lite build: only bundle ws (the sole non-DSH runtime dependency).
+  # @deepseek-ai packages are auto-installed on first launch via npm.
+  - node_modules/ws/**/*
 
 asar: true
 # No asarUnpack needed for @deepseek-ai packages since they are excluded.
