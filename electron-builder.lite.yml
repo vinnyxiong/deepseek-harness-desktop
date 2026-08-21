@@ -1,5 +1,5 @@
 appId: com.deepseek.harness
-productName: DeepSeek Harness
+productName: DeepSeek Harness Lite
 copyright: Copyright DeepSeek
 directories:
   output: release-lite
