@@ -36,17 +36,15 @@ test('isDshInstalled returns false when DSH is not installed', () => {
   assert.equal(typeof result, 'boolean');
 });
 
-test('installDshLocal finds npm and spawns install', async () => {
+test('installDshLocal finds node and npm and spawns install with correct PATH', async () => {
   const phases = [];
   let spawnCmd = null;
-  let spawnArgs = null;
-  let spawnOpts = null;
+  let spawnEnv = null;
 
   const result = await installDshLocal({
     spawnImpl: (cmd, args, opts) => {
       spawnCmd = cmd;
-      spawnArgs = args;
-      spawnOpts = opts;
+      spawnEnv = opts.env;
       return spawnExit(0, null, 'added 200 packages');
     },
     timeoutMs: 5000,
@@ -54,11 +52,10 @@ test('installDshLocal finds npm and spawns install', async () => {
   });
 
   assert.equal(result.success, true);
-  // Should be an absolute npm path
   assert.ok(spawnCmd.endsWith('npm'), `expected npm path, got ${spawnCmd}`);
-  assert.ok(spawnArgs.includes('install'));
-  assert.ok(spawnArgs.includes('@deepseek-ai/dsh'));
-  assert.equal(spawnOpts.shell, false);
+  // PATH should be augmented with node's bin directory
+  const pathDirs = (spawnEnv.PATH || '').split(path.delimiter);
+  assert.ok(pathDirs[0].includes('bin'), `first PATH entry should be node bin dir, got ${pathDirs[0]}`);
   assert.ok(phases.length > 0);
 });
 

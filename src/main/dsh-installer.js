@@ -22,36 +22,27 @@ function getInstalledDshBinPath() {
   return INSTALLED_DSH_BIN;
 }
 
-// Find npm by scanning PATH and common locations.
-// This avoids spawning a login shell (slow) and works in Electron's
-// minimal PATH environment.
-function findNpm() {
-  // 1. Common locations on macOS / Linux
+// Find a binary by scanning known locations and PATH.
+// Electron-packaged apps have a minimal PATH, so we need to search
+// common installation directories directly.
+function findBin(name) {
   const candidates = [];
   if (process.platform === 'darwin') {
-    candidates.push('/opt/homebrew/bin/npm');
-    candidates.push('/usr/local/bin/npm');
+    candidates.push(`/opt/homebrew/bin/${name}`);
+    candidates.push(`/usr/local/bin/${name}`);
   }
-  candidates.push('/usr/bin/npm');
+  candidates.push(`/usr/bin/${name}`);
+  candidates.push(`/bin/${name}`);
 
   for (const p of candidates) {
-    try {
-      fs.accessSync(p, fs.constants.X_OK);
-      return p;
-    } catch { /* not here */ }
+    try { fs.accessSync(p, fs.constants.X_OK); return p; } catch { /* not here */ }
   }
-
-  // 2. Walk PATH directories
   for (const dir of (process.env.PATH || '').split(path.delimiter)) {
     if (!dir) continue;
-    const p = path.join(dir, 'npm');
-    if (candidates.includes(p)) continue; // already checked
-    try {
-      fs.accessSync(p, fs.constants.X_OK);
-      return p;
-    } catch { /* not here */ }
+    const p = path.join(dir, name);
+    if (candidates.includes(p)) continue;
+    try { fs.accessSync(p, fs.constants.X_OK); return p; } catch { /* not here */ }
   }
-
   return null;
 }
 
@@ -62,10 +53,22 @@ async function installDshLocal({
 } = {}) {
   await fs.promises.mkdir(DSH_RUNNER_DIR, { recursive: true });
 
-  const npmPath = findNpm();
+  const npmPath = findBin('npm');
   if (!npmPath) {
     throw new Error('npm is not available. Please install Node.js and npm first.');
   }
+  // npm's shebang "#!/usr/bin/env node" requires node in PATH.
+  // Electron's minimal PATH does not include node, so we find it
+  // and prepend its directory to PATH.
+  const nodePath = findBin('node');
+  if (!nodePath) {
+    throw new Error('node is not available. Please install Node.js first.');
+  }
+  const binDir = path.dirname(nodePath);
+  const env = {
+    ...process.env,
+    PATH: `${binDir}${path.delimiter}${process.env.PATH || ''}`,
+  };
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -82,7 +85,7 @@ async function installDshLocal({
       shell: false,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
-      env: { ...process.env },
+      env,
     });
 
     const timer = setTimeout(() => {
@@ -140,7 +143,7 @@ module.exports = {
   DSH_RUNNER_DIR,
   INSTALLED_DSH_BIN,
   INSTALL_TIMEOUT_MS,
-  findNpm,
+  findBin,
   getInstalledDshBinPath,
   installDshLocal,
   isDshInstalled,
