@@ -10,7 +10,7 @@ const INSTALLED_DSH_BIN = path.join(DSH_RUNNER_DIR, 'node_modules', '@deepseek-a
 
 const INSTALL_TIMEOUT_MS = 120_000;
 
-// Common npm locations on macOS (Homebrew, system) and Linux
+// Common npm locations on macOS (Homebrew, system, nvm) and Linux
 const NPM_CANDIDATES = [
   '/opt/homebrew/bin/npm',
   '/usr/local/bin/npm',
@@ -19,7 +19,7 @@ const NPM_CANDIDATES = [
 ];
 
 function resolveNpmPath() {
-  // Try known paths first
+  // 1. Try known paths first
   for (const candidate of NPM_CANDIDATES) {
     try {
       fs.accessSync(candidate, fs.constants.X_OK);
@@ -28,10 +28,48 @@ function resolveNpmPath() {
       // Not at this path
     }
   }
-  // Fall back to PATH lookup via shell
+
+  // 2. Try each directory in PATH
+  const pathDirs = (process.env.PATH || '').split(path.delimiter);
+  for (const dir of pathDirs) {
+    const candidate = path.join(dir, 'npm');
+    if (candidate === NPM_CANDIDATES[0] || candidate === NPM_CANDIDATES[1] ||
+        candidate === NPM_CANDIDATES[2] || candidate === NPM_CANDIDATES[3]) {
+      continue; // Already checked
+    }
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // Not at this path
+    }
+  }
+
+  // 3. Try ~/.nvm/ (Node Version Manager)
+  try {
+    const nvmDir = path.join(os.homedir(), '.nvm', 'versions', 'node');
+    if (fs.statSync(nvmDir).isDirectory()) {
+      const versions = fs.readdirSync(nvmDir);
+      // Use the latest version first
+      versions.sort().reverse();
+      for (const version of versions) {
+        const candidate = path.join(nvmDir, version, 'bin', 'npm');
+        try {
+          fs.accessSync(candidate, fs.constants.X_OK);
+          return candidate;
+        } catch {
+          // Not at this path
+        }
+      }
+    }
+  } catch {
+    // nvm directory doesn't exist or can't be read
+  }
+
+  // 4. Fall back to login shell lookup
   try {
     const shell = process.env.SHELL || '/bin/zsh';
-    const result = execFileSync(shell, ['-l', '-c', 'which npm'], {
+    const result = execFileSync(shell, ['-l', '-c', 'which npm 2>/dev/null'], {
       timeout: 5000,
       encoding: 'utf8',
     });
@@ -47,6 +85,7 @@ function resolveNpmPath() {
   } catch {
     // shell lookup failed
   }
+
   return null;
 }
 
