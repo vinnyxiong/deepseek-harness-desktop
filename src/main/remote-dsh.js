@@ -6,14 +6,24 @@ const { DSH_VERSION } = require('./dsh-installer');
 const DSH_REMOTE_BIN = '~/.local/state/dsh/runner/node_modules/.bin/dsh';
 const DSH_REMOTE_RUNNER_DIR = '~/.local/state/dsh/runner';
 
-// Write a minimal package.json with overrides to pin all @deepseek-ai/*
-// transitive deps. Never use caret ranges — they resolve to newer rc.x
-// which may reference packages that don't exist on the registry.
-const OVERRIDES_JSON = JSON.stringify({
-  dependencies: { '@deepseek-ai/dsh': DSH_VERSION },
-  overrides: { '@deepseek-ai/*': DSH_VERSION },
-});
-const WRITE_OVERRIDES_CMD = `echo '${OVERRIDES_JSON}' > ${DSH_REMOTE_RUNNER_DIR}/package.json`;
+// Pre-computed list of all @deepseek-ai/* transitive deps at the pinned
+// version. We list them as direct dependencies so npm never resolves
+// caret ranges to newer (possibly broken) rc.x releases.
+let DSH_ALL_DEPS = null;
+try { DSH_ALL_DEPS = require('./dsh-deps.json'); } catch {}
+
+// Build the package.json content that will be written to the remote runner.
+// When we have the full deps list, all @deepseek-ai/* packages are pinned as
+// direct dependencies. Otherwise fall back to just dsh with overrides.
+const RUNNER_PACKAGE_JSON = JSON.stringify(
+  DSH_ALL_DEPS
+    ? { private: true, dependencies: DSH_ALL_DEPS, overrides: { '@deepseek-ai/*': DSH_VERSION } }
+    : { dependencies: { '@deepseek-ai/dsh': DSH_VERSION }, overrides: { '@deepseek-ai/*': DSH_VERSION } }
+);
+
+// Write the package.json on the remote machine before npm install.
+// The JSON contains no single quotes, so echo '...' is safe.
+const WRITE_PKG_CMD = `echo '${RUNNER_PACKAGE_JSON}' > ${DSH_REMOTE_RUNNER_DIR}/package.json`;
 
 const COMMAND_TIMEOUT_MS = 15_000;
 
@@ -92,7 +102,7 @@ async function checkRemoteDshInstalled(settings, opts = {}) {
 }
 
 async function installRemoteDsh(settings, opts = {}) {
-  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && ${WRITE_OVERRIDES_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1`;
+  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && ${WRITE_PKG_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }
@@ -180,7 +190,7 @@ async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
 }
 
 async function updateRemoteDsh(settings, opts = {}) {
-  const command = `${WRITE_OVERRIDES_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
+  const command = `${WRITE_PKG_CMD} && npm install --prefer-offline --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
   return { output: stdout };
 }

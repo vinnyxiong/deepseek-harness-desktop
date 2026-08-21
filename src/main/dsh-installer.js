@@ -24,6 +24,14 @@ function resolveDshVersion() {
 const DSH_VERSION = resolveDshVersion();
 const DSH_PACKAGE_SPEC = `@deepseek-ai/dsh@${DSH_VERSION}`;
 
+// Pre-computed list of all @deepseek-ai/* transitive dependencies of dsh
+// at the pinned version. We list them all as direct dependencies so npm
+// never resolves caret ranges to newer (possibly broken) rc.x releases.
+let DSH_ALL_DEPS = null;
+try {
+  DSH_ALL_DEPS = require('./dsh-deps.json');
+} catch { /* lite builds may not include this file */ }
+
 
 function isDshInstalled() {
   try {
@@ -112,20 +120,22 @@ async function installDshLocal({
 } = {}) {
   await fs.promises.mkdir(DSH_RUNNER_DIR, { recursive: true });
 
-  // Write a minimal package.json with overrides to pin all @deepseek-ai/*
-  // transitive dependencies to the exact version. Without this, npm caret
-  // ranges (^0.1.0-rc.6) can resolve to rc.8 which may have missing
-  // transitive deps like dsh-session-checkpoint-policy that don't exist
-  // on the npm registry.
-  // The overrides field only takes effect when the package.json also has
-  // a dependencies field, so we include both and run npm install without
-  // a package argument.
+  // Write a minimal package.json that lists ALL @deepseek-ai/* transitive
+  // deps as direct dependencies, pinned to the exact version. This
+  // prevents npm from resolving caret ranges (^0.1.0-rc.6) to newer rc.x
+  // releases that may reference packages not published to the registry
+  // (e.g. dsh-session-checkpoint-policy@rc.8 never existed).
+  const pkgJson = {
+    private: true,
+    dependencies: DSH_ALL_DEPS || { '@deepseek-ai/dsh': DSH_VERSION },
+  };
+  // If we have the full deps list, also add overrides as a safety net
+  if (DSH_ALL_DEPS) {
+    pkgJson.overrides = { '@deepseek-ai/*': DSH_VERSION };
+  }
   await fs.promises.writeFile(
     path.join(DSH_RUNNER_DIR, 'package.json'),
-    JSON.stringify({
-      dependencies: { '@deepseek-ai/dsh': DSH_VERSION },
-      overrides: { '@deepseek-ai/*': DSH_VERSION },
-    }, null, 2) + '\n',
+    JSON.stringify(pkgJson, null, 2) + '\n',
     'utf8',
   );
 
