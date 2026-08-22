@@ -25,6 +25,8 @@
     "dist:mac:arm64": "npm run build:icons:mac && npm run build:bundle && electron-builder --mac --arm64 --publish never",
     "dist:win": "npm run build:icons && npm run build:bundle && electron-builder --win --publish never",
     "dist:linux": "npm run build:icons && npm run build:bundle && electron-builder --linux --publish never",
+    "dist:ci:mac:x64": "npm run build:icons:mac && npm run build:bundle && electron-builder --mac --x64 --publish onTag",
+    "dist:ci:mac:arm64": "npm run build:icons:mac && npm run build:bundle && electron-builder --mac --arm64 --publish onTag",
     "test": "node --test test/*.test.js",
     "check": "node scripts/check-syntax.mjs && npm test",
     "smoke:packaged": "node scripts/smoke-test-packaged-dsh.mjs"

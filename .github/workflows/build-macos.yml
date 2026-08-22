@@ -134,7 +134,9 @@ jobs:
 
       - name: Build unsigned installers
         if: ${{ steps.signing.outputs.signed != 'true' }}
-        run: npm run dist:mac:${{ matrix.arch }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:ci:mac:${{ matrix.arch }}
 
       - name: Build signed installers without notarization
         if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize != 'true' }}
@@ -142,7 +144,8 @@ jobs:
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
-        run: npm run dist:mac:${{ matrix.arch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:ci:mac:${{ matrix.arch }}
 
       - name: Build signed and notarized installers with API key
         if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize_method == 'api_key' }}
@@ -152,7 +155,8 @@ jobs:
           CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: npm run dist:mac:${{ matrix.arch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:ci:mac:${{ matrix.arch }}
 
       - name: Build signed and notarized installers with Apple ID
         if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize_method == 'apple_id' }}
@@ -163,7 +167,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run dist:mac:${{ matrix.arch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:ci:mac:${{ matrix.arch }}
 
       - name: Clean up notarization key
         if: ${{ always() }}
@@ -319,34 +324,5 @@ jobs:
             release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.dmg.blockmap
             release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.zip
             release/DeepSeek-Harness-*-mac-${{ matrix.arch }}.zip.blockmap
+            release/latest-mac.yml
             release/SHA256SUMS-mac-${{ matrix.arch }}.txt
-
-  publish-release:
-    name: Publish GitHub Release
-    needs: build-macos
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Flatten artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p release
-          find artifacts -type f \( -name '*.dmg' -o -name '*.dmg.blockmap' -o -name '*.zip' -o -name '*.zip.blockmap' -o -name 'latest-mac.yml' -o -name 'SHA256SUMS-*.txt' \) -exec cp {} release/ \;
-          ls -la release/
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          name: DeepSeek Harness ${{ github.ref_name }}
-          files: release/*
-          generate_release_notes: true
