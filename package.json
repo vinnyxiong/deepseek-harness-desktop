@@ -52,12 +52,12 @@
     "@deepseek-ai/dsh-subprocess": "0.1.0-rc.6",
     "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
     "@deepseek-ai/dsh-workflow": "0.1.0-rc.6",
+    "electron-updater": "^6.8.9",
     "ws": "^8.21.3"
   },
   "devDependencies": {
     "electron": "^43.4.0",
     "electron-builder": "^26.15.3",
-    "electron-updater": "^6.8.9",
     "png-to-ico": "^3.0.2",
     "sharp": "^0.35.3"
   },
