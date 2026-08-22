@@ -112,7 +112,11 @@ async function initialize() {
   windows.showHostManager();
 
   // Auto-update (only in packaged builds)
-  require('./main/auto-updater').initAutoUpdater({ app, windows });
+  try {
+    require('./main/auto-updater').initAutoUpdater({ app, windows });
+  } catch (error) {
+    console.warn('[auto-updater] Failed to initialize:', error.message);
+  }
 }
 
 const lock = app.requestSingleInstanceLock();

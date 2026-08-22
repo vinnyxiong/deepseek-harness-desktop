@@ -12,6 +12,9 @@ files:
   - "!node_modules/.cache/**"
 
 asar: true
+nodeGypRebuild: false
+npmRebuild: false
+nativeRebuilder: null
 asarUnpack:
   # dsh dynamically imports plugins and creates profile fallback symlinks.
   # Keep its complete dependency closure on the real filesystem.
