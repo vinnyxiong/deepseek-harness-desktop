@@ -17,6 +17,12 @@ asarUnpack:
   # Keep its complete dependency closure on the real filesystem.
   - node_modules/**/*
 
+extraResources:
+  - from: dsh-bundle.tar.gz
+    to: dsh-bundle.tar.gz
+  - from: dsh-bundle.version
+    to: dsh-bundle.version
+
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns

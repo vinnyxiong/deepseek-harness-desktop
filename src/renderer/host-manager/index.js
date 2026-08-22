@@ -10,8 +10,8 @@ const detailPanel = $('#detail-panel');
 const detailStatus = $('#detail-status');
 const statusText = $('#status-text');
 const statusEndpoint = $('#status-endpoint');
-const installProgress = $('#install-progress');
-const installProgressText = $('#install-progress-text');
+const progressBar = $('#progress-bar');
+const progressBarText = $('#progress-bar-text');
 const connectBtn = $('#connect-btn');
 const disconnectBtn = $('#disconnect-btn');
 const retryBtn = $('#retry-btn');
@@ -79,13 +79,9 @@ function renderDetail() {
     connecting: '正在连接...',
     starting: '正在启动本机 DSH...',
     'remote-start': '正在启动远程 DSH...',
-    'remote-install-checking': '正在检查远程环境...',
-    'remote-installing': '正在远程安装 DSH，请稍候...',
+    'remote-transferring': '正在传输 DSH 到远程服务器...',
     'ssh-tunnel': '正在建立 SSH 隧道...',
     'health-check': '正在检查服务状态...',
-    checking: '正在检查环境...',
-    preparing: '正在准备安装 DSH...',
-    installing: '正在下载并安装 DSH，请稍候...',
     connected: '已连接',
   };
   if (snap.state === 'error' && snap.error) {
@@ -101,19 +97,18 @@ function renderDetail() {
     statusEndpoint.hidden = true;
   }
 
-  // Install progress
-  const isRemoteInstalling = snap.progress?.phase === 'remote-install-checking' || snap.progress?.phase === 'remote-installing';
-  if (snap.state === 'installing' || isRemoteInstalling) {
-    installProgress.hidden = false;
-    const phases = { preparing: '正在准备安装...', installing: '正在下载并安装 DSH，请稍候...', done: '安装完成，正在启动...', 'remote-install-checking': '正在检查远程环境...', 'remote-installing': '正在远程安装 DSH，请稍候...' };
-    installProgressText.textContent = phases[snap.progress?.phase] || snap.progress?.message || '正在安装 DSH...';
+  // Progress bar (remote transfer)
+  const isTransferring = snap.progress?.phase === 'remote-transferring';
+  if (isTransferring) {
+    progressBar.hidden = false;
+    progressBarText.textContent = snap.progress?.message || '正在传输 DSH...';
   } else {
-    installProgress.hidden = true;
+    progressBar.hidden = true;
   }
 
   // Buttons
-  const isConnecting = snap.state === 'connecting' || snap.progress?.phase === 'remote-install-checking' || snap.progress?.phase === 'remote-installing';
-  connectBtn.hidden = isConnected || isConnecting || snap.state === 'installing';
+  const isConnecting = snap.state === 'connecting' || isTransferring;
+  connectBtn.hidden = isConnected || isConnecting;
   disconnectBtn.hidden = !isConnected;
   retryBtn.hidden = snap.state !== 'error';
 
@@ -137,7 +132,7 @@ function renderDetail() {
 
 function stateLabel(snap) {
   if (snap.progress?.message) return snap.progress.message;
-  const labels = { idle: '未连接', connecting: '连接中...', installing: '安装中...', connected: '已连接', error: '错误' };
+  const labels = { idle: '未连接', connecting: '连接中...', connected: '已连接', error: '错误' };
   return labels[snap.state] || snap.state;
 }
 

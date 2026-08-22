@@ -1,6 +1,5 @@
 const { EventEmitter } = require('events');
 const { waitForDsh, probeDsh } = require('./dsh-health');
-const { DshNotInstalledError } = require('./local-dsh');
 
 const MONITOR_INTERVAL_MS = 5_000;
 const MONITOR_FAILURE_LIMIT = 3;
@@ -12,7 +11,6 @@ class HostManager extends EventEmitter {
     startLocal,
     startManagedSsh,
     remoteDsh = null,
-    localDshInstaller = null,
     health = { waitForDsh, probeDsh },
     monitorIntervalMs = MONITOR_INTERVAL_MS,
     monitorFailureLimit = MONITOR_FAILURE_LIMIT,
@@ -21,7 +19,6 @@ class HostManager extends EventEmitter {
     this.startLocal = startLocal;
     this.startManagedSsh = startManagedSsh;
     this.remoteDsh = remoteDsh;
-    this.localDshInstaller = localDshInstaller;
     this.health = health;
     this.monitorIntervalMs = monitorIntervalMs;
     this.monitorFailureLimit = monitorFailureLimit;
@@ -118,36 +115,7 @@ class HostManager extends EventEmitter {
     if (host.type === 'local') {
       conn.progress = { phase: 'starting', message: '正在启动本机 DSH...' };
       this.emitStatus(host.id);
-      try {
-        handle = await this.startLocal(details => this.handleUnexpectedExit(host.id, details));
-      } catch (error) {
-        if (error instanceof DshNotInstalledError && this.localDshInstaller) {
-          try {
-            const result = await this.localDshInstaller.install({
-              onProgress: (phase, label) => {
-                const messages = {
-                  checking: '正在检查环境...',
-                  preparing: '正在准备安装 DSH...',
-                  installing: label || '正在下载并安装 DSH，请稍候...',
-                  done: '安装完成，正在启动...',
-                };
-                conn.progress = { phase, message: messages[phase] || label || phase };
-                this.emitStatus(host.id);
-              },
-            });
-            if (!result.success) {
-              throw new Error('DSH installation failed. Please ensure npm is available and try again.');
-            }
-          } catch (installError) {
-            throw new Error(`DSH installation failed: ${publicError(installError)}`);
-          }
-          conn.progress = { phase: 'starting', message: '正在启动本机 DSH...' };
-          this.emitStatus(host.id);
-          handle = await this.startLocal(details => this.handleUnexpectedExit(host.id, details));
-        } else {
-          throw error;
-        }
-      }
+      handle = await this.startLocal(details => this.handleUnexpectedExit(host.id, details));
     } else if (host.type === 'remote') {
       let dynamicRemotePort = null;
       if (this.remoteDsh && host.autoStartRemoteDsh !== false) {
@@ -167,10 +135,7 @@ class HostManager extends EventEmitter {
         } catch (error) {
           console.error('Failed to auto-start remote DSH:', error.message);
           conn.remoteDshState = { running: false, pid: null, port: null };
-          if (host.autoInstallRemoteDsh !== false &&
-              (error.message.includes('npm') || error.message.includes('installation'))) {
-            throw error;
-          }
+          throw error;
         }
       }
       conn.progress = { phase: 'ssh-tunnel', message: '正在建立 SSH 隧道...' };

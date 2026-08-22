@@ -1,31 +1,23 @@
 const { spawn } = require('child_process');
+const path = require('path');
 const { buildCommonSshOptions, DEFAULT_SSH_PATH } = require('./managed-ssh');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
-const { DSH_VERSION } = require('./dsh-installer');
 
 const DSH_REMOTE_BIN = '~/.local/state/dsh/runner/node_modules/.bin/dsh';
 const DSH_REMOTE_RUNNER_DIR = '~/.local/state/dsh/runner';
-
-// Pre-computed list of all @deepseek-ai/* transitive deps at the pinned
-// version. We list them as direct dependencies so npm never resolves
-// caret ranges to newer (possibly broken) rc.x releases.
-let DSH_ALL_DEPS = null;
-try { DSH_ALL_DEPS = require('./dsh-deps.json'); } catch {}
-
-// Build the package.json content that will be written to the remote runner.
-// When we have the full deps list, all @deepseek-ai/* packages are pinned as
-// direct dependencies. Otherwise fall back to just dsh with overrides.
-const RUNNER_PACKAGE_JSON = JSON.stringify(
-  DSH_ALL_DEPS
-    ? { private: true, dependencies: DSH_ALL_DEPS, overrides: { '@deepseek-ai/*': DSH_VERSION } }
-    : { dependencies: { '@deepseek-ai/dsh': DSH_VERSION }, overrides: { '@deepseek-ai/*': DSH_VERSION } }
-);
-
-// Write the package.json on the remote machine before npm install.
-// The JSON contains no single quotes, so echo '...' is safe.
-const WRITE_PKG_CMD = `echo '${RUNNER_PACKAGE_JSON}' > ${DSH_REMOTE_RUNNER_DIR}/package.json`;
+const DSH_REMOTE_VERSION_FILE = '~/.local/state/dsh/runner/.dsh-version';
 
 const COMMAND_TIMEOUT_MS = 15_000;
+
+// Resolve the path to dsh-bundle.tar.gz (bundled as extraResource).
+function getBundlePath() {
+  // In development, read from project root.
+  if (process.env.NODE_ENV !== 'production' && !require('electron').app?.isPackaged) {
+    return path.join(__dirname, '..', '..', 'dsh-bundle.tar.gz');
+  }
+  // In packaged app, extraResources are placed in the resources directory.
+  return path.join(process.resourcesPath, 'dsh-bundle.tar.gz');
+}
 
 function buildRemoteSshArgs(settings) {
   return buildCommonSshOptions(settings);
@@ -36,6 +28,7 @@ function runRemoteCommand(settings, command, {
   spawnImpl = spawn,
   terminateImpl = terminateChild,
   timeoutMs = COMMAND_TIMEOUT_MS,
+  stdin = null,
 } = {}) {
   return new Promise((resolve, reject) => {
     const diagnostics = createDiagnosticBuffer();
@@ -46,11 +39,15 @@ function runRemoteCommand(settings, command, {
 
     const child = spawnImpl(sshPath, [...buildRemoteSshArgs(settings), command], {
       shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [stdin ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       windowsHide: true,
       detached: process.platform !== 'win32',
       env: { ...process.env, SSH_ASKPASS_REQUIRE: 'never' },
     });
+
+    if (stdin) {
+      stdin.pipe(child.stdin);
+    }
 
     child.stdout?.on('data', chunk => { stdout += chunk.toString(); });
     child.stderr?.on('data', chunk => {
@@ -89,23 +86,51 @@ function runRemoteCommand(settings, command, {
   });
 }
 
-// --- Remote DSH lifecycle (no dsh-web dependency) ---
+// --- Remote DSH lifecycle ---
 
-async function checkRemoteNpmAvailable(settings, opts = {}) {
-  const command = 'npm --version 2>/dev/null && echo "npm:ok" || echo "npm:missing"';
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
-  return stdout.includes('npm:ok');
+// Read the bundled DSH version from the version file.
+function getBundledDshVersion() {
+  try {
+    const fs = require('fs');
+    const versionPath = path.join(path.dirname(getBundlePath()), 'dsh-bundle.version');
+    return fs.readFileSync(versionPath, 'utf8').trim();
+  } catch {
+    // Fallback: read from the bundled package.json
+    try {
+      const pkg = require('../../package.json');
+      return pkg.dependencies?.['@deepseek-ai/dsh'] || '0.1.0-rc.6';
+    } catch {
+      return '0.1.0-rc.6';
+    }
+  }
 }
 
+// Check if DSH is installed on the remote AND the version matches.
 async function checkRemoteDshInstalled(settings, opts = {}) {
-  const command = `test -x ${DSH_REMOTE_BIN} && echo "installed" || echo "missing"`;
+  const version = getBundledDshVersion();
+  const command = `test -x ${DSH_REMOTE_BIN} && test -f ${DSH_REMOTE_VERSION_FILE} && grep -qFx '${version}' ${DSH_REMOTE_VERSION_FILE} && echo "installed" || echo "missing"`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
   return stdout.includes('installed');
 }
 
-async function installRemoteDsh(settings, opts = {}) {
-  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && ${WRITE_PKG_CMD} && npm install --prefer-offline --legacy-peer-deps --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
+// Transfer the bundled DSH to the remote machine via SSH piped tar.
+async function transferRemoteDsh(settings, opts = {}) {
+  const fs = require('fs');
+  const bundlePath = opts.bundlePath || getBundlePath();
+  const version = opts.bundleVersion || getBundledDshVersion();
+
+  opts.onProgress?.('remote-transferring', '正在传输 DSH 到远程服务器...');
+
+  try {
+    fs.accessSync(bundlePath, fs.constants.R_OK);
+  } catch {
+    throw new Error('DSH bundle not found. The application may not have been built correctly.');
+  }
+
+  // Pipe the tar.gz via SSH stdin, extract on remote, then write version file.
+  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && rm -rf ${DSH_REMOTE_RUNNER_DIR}/node_modules && tar xzf - -C ${DSH_REMOTE_RUNNER_DIR} && echo '${version}' > ${DSH_REMOTE_VERSION_FILE} && echo "done"`;
+  const stdin = fs.createReadStream(bundlePath);
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000, stdin });
   return { output: stdout };
 }
 
@@ -114,23 +139,17 @@ async function startRemoteDsh(settings, opts = {}) {
   if (opts.autoInstall === true) {
     const installed = await checkRemoteDshInstalled(settings, opts);
     if (!installed) {
-      opts.onProgress?.('remote-install-checking', '正在检查远程环境...');
-      const npmOk = await checkRemoteNpmAvailable(settings, opts);
-      if (!npmOk) {
-        throw new Error('Remote machine does not have npm. Please install Node.js and npm on the remote machine, or disable "Auto-install remote DSH" in connection settings.');
-      }
-      opts.onProgress?.('remote-installing', '正在远程安装 DSH，请稍候...');
-      await installRemoteDsh(settings, opts);
+      opts.onProgress?.('remote-transferring', '正在传输 DSH 到远程服务器...');
+      await transferRemoteDsh(settings, opts);
       const recheck = await checkRemoteDshInstalled(settings, opts);
       if (!recheck) {
-        throw new Error('DSH installation on the remote machine completed but the binary was not found. Check npm output for errors.');
+        throw new Error('DSH transfer completed but the binary was not found on the remote machine.');
       }
-      opts.onProgress?.('remote-start', '安装完成，正在启动远程 DSH...');
+      opts.onProgress?.('remote-start', '传输完成，正在启动远程 DSH...');
     }
   }
 
   // Start dsh web --port 0 on the remote machine, capture its PID and port.
-  // Use the full path since npm --prefix installs into a local node_modules.
   const command = `nohup ${DSH_REMOTE_BIN} web --port 0 > /tmp/dsh-remote-$$.log 2>&1 & PID=$!; for i in $(seq 1 30); do PORT=$(grep -oP 'http://127\\.0\\.0\\.1:\\K\\d+' /tmp/dsh-remote-$$.log 2>/dev/null); if [ -n "$PORT" ]; then echo "PID:$PID PORT:$PORT"; exit 0; fi; if ! kill -0 $PID 2>/dev/null; then echo "EXITED"; exit 1; fi; sleep 1; done; kill $PID 2>/dev/null; echo "TIMEOUT"; exit 1`;
   const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 45_000 });
 
@@ -192,9 +211,9 @@ async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
 }
 
 async function updateRemoteDsh(settings, opts = {}) {
-  const command = `${WRITE_PKG_CMD} && npm install --prefer-offline --legacy-peer-deps --prefix ${DSH_REMOTE_RUNNER_DIR} --no-audit --no-fund 2>&1; echo "---"; ${DSH_REMOTE_BIN} --version 2>/dev/null || echo "version-unknown"`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000 });
-  return { output: stdout };
+  await transferRemoteDsh(settings, opts);
+  const version = await getRemoteDshVersion(settings, opts);
+  return { output: `Updated to version ${version.version}` };
 }
 
-module.exports = { buildRemoteSshArgs, checkRemoteDshInstalled, checkRemoteNpmAvailable, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, installRemoteDsh, startRemoteDsh, stopRemoteDsh, updateRemoteDsh };
+module.exports = { buildRemoteSshArgs, checkRemoteDshInstalled, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, transferRemoteDsh, updateRemoteDsh };

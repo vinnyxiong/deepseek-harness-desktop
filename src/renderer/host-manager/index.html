@@ -38,11 +38,11 @@
           <span id="status-endpoint" class="status-endpoint" hidden></span>
         </div>
 
-        <!-- Install progress -->
-        <div id="install-progress" class="install-progress" aria-live="polite" hidden>
+        <!-- Progress bar -->
+        <div id="progress-bar" class="install-progress" aria-live="polite" hidden>
           <div class="install-progress-inner">
             <span class="install-spinner" aria-hidden="true"></span>
-            <span id="install-progress-text">正在安装 DSH...</span>
+            <span id="progress-bar-text">正在处理...</span>
           </div>
         </div>
 
@@ -80,7 +80,7 @@
             <div class="checkbox-list">
               <label class="checkbox-label"><input id="auto-start-field" type="checkbox" checked><span><strong>连接时自动启动远程 DSH</strong><small>建立隧道前检查并启动远程服务。</small></span></label>
               <label class="checkbox-label"><input id="auto-stop-field" type="checkbox" checked><span><strong>断开时自动停止远程 DSH</strong><small>仅停止由此连接管理的远程服务。</small></span></label>
-              <label class="checkbox-label"><input id="auto-install-field" type="checkbox" checked><span><strong>自动安装远程 DSH</strong><small>远程机器未安装 DSH 时，自动通过 npm 安装。</small></span></label>
+              <label class="checkbox-label"><input id="auto-install-field" type="checkbox" checked><span><strong>自动传输远程 DSH</strong><small>远程机器未安装 DSH 时，自动传输 DSH 到远程。</small></span></label>
             </div>
           </div>
 

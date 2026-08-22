@@ -8,10 +8,9 @@ const { HostManager } = require('./main/host-manager');
 const { translate } = require('./main/i18n');
 const { registerHostIpc } = require('./main/ipc');
 const { LocaleService } = require('./main/locale-service');
-const { startLocalDsh, resolveDshBin } = require('./main/local-dsh');
+const { startLocalDsh } = require('./main/local-dsh');
 const { startManagedSsh } = require('./main/managed-ssh');
 const { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh } = require('./main/remote-dsh');
-const { installDshLocal } = require('./main/dsh-installer');
 const { registerNotificationIpc } = require('./main/notification-ipc');
 const { NotificationService } = require('./main/notification-service');
 const { createNotificationSettingsStore } = require('./main/notification-settings-store');
@@ -64,18 +63,6 @@ async function initialize() {
     onHostFrame: frame => localeService.handleHostFrame(frame),
   });
 
-  // Only inject the local DSH installer when DSH is not bundled (lite build).
-  let localDshInstaller = null;
-  try {
-    resolveDshBin({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath });
-  } catch {
-    localDshInstaller = {
-      async install({ onProgress }) {
-        return installDshLocal({ onProgress: (phase, label) => onProgress?.(phase, label) });
-      },
-    };
-  }
-
   manager = new HostManager({
     startLocal: onUnexpectedExit => startLocalDsh({
       executablePath: process.execPath,
@@ -90,7 +77,6 @@ async function initialize() {
       remotePort,
     }),
     remoteDsh: { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh },
-    localDshInstaller,
   });
 
   manager.setHosts(settings.hosts);

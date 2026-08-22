@@ -1,6 +1,5 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { createRequire } = require('module');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
@@ -9,20 +8,9 @@ const require_ = createRequire(__filename);
 const STARTUP_TIMEOUT_MS = 30_000;
 const SERVER_URL_PATTERN = /dsh web:\s+(http:\/\/127\.0\.0\.1:(\d+))/;
 
-const INSTALLED_DSH_BIN = path.join(os.homedir(), '.local', 'state', 'dsh', 'runner', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-
-class DshNotInstalledError extends Error {
-  constructor() {
-    super('DSH is not installed. Auto-installation may be available.');
-    this.name = 'DshNotInstalledError';
-    this.code = 'DSH_NOT_INSTALLED';
-  }
-}
-
 function resolveDshBin({ isPackaged, resourcesPath }) {
   if (!isPackaged) return require_.resolve('@deepseek-ai/dsh/lib/bin.js');
 
-  // 1. Try bundled path (full build)
   const bundledPath = path.join(
     resourcesPath,
     'app.asar.unpacked',
@@ -32,23 +20,8 @@ function resolveDshBin({ isPackaged, resourcesPath }) {
     'lib',
     'bin.js',
   );
-  try {
-    fs.accessSync(bundledPath, fs.constants.R_OK);
-    return bundledPath;
-  } catch {
-    // Not bundled — continue to installed path
-  }
-
-  // 2. Try installed path (lite build, via npm install)
-  try {
-    fs.accessSync(INSTALLED_DSH_BIN, fs.constants.R_OK);
-    return INSTALLED_DSH_BIN;
-  } catch {
-    // Not installed either
-  }
-
-  // 3. Neither available
-  throw new DshNotInstalledError();
+  fs.accessSync(bundledPath, fs.constants.R_OK);
+  return bundledPath;
 }
 
 async function startLocalDsh({
@@ -153,4 +126,4 @@ async function startLocalDsh({
   }
 }
 
-module.exports = { DshNotInstalledError, INSTALLED_DSH_BIN, SERVER_URL_PATTERN, resolveDshBin, startLocalDsh };
+module.exports = { SERVER_URL_PATTERN, resolveDshBin, startLocalDsh };
