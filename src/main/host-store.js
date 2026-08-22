@@ -7,17 +7,23 @@ const SETTINGS_FILE_NAME = 'desktop-settings.json';
 const CURRENT_SCHEMA_VERSION = 3;
 
 const HOST_TYPES = new Set(['local', 'remote']);
-const LOCAL_KEYS = new Set(['id', 'name', 'type']);
+const LOCAL_KEYS = new Set(['id', 'name', 'type', 'icon']);
 const REMOTE_KEYS = new Set([
-  'id', 'name', 'type',
+  'id', 'name', 'type', 'icon',
   'host', 'username', 'sshPort', 'localPort',
   'identityFile', 'hostKeyPolicy',
   'autoStartRemoteDsh', 'autoStopRemoteDsh', 'autoInstallRemoteDsh',
 ]);
 
 const DEFAULT_HOSTS = Object.freeze([
-  Object.freeze({ id: 'local', name: '本机', type: 'local' }),
+  Object.freeze({ id: 'local', name: '本机', type: 'local', icon: '🖥️' }),
 ]);
+
+const DEFAULT_EMOJIS = ['🖥️', '🖥', '🖳', '💻', '🖧', '🖴', '🖵', '🗄️', '🛠️', '📦', '🚀', '⚡', '🔧', '🔮', '🌐', '💡', '🦾', '🏠', '🌍', '📡'];
+
+function randomEmoji() {
+  return DEFAULT_EMOJIS[Math.floor(Math.random() * DEFAULT_EMOJIS.length)];
+}
 
 function cloneDefaults() {
   return JSON.parse(JSON.stringify(DEFAULT_HOSTS));
@@ -55,7 +61,7 @@ function validateHost(host, index) {
         throw new TypeError(`${prefix} (local) contains unknown property: ${key}`);
       }
     }
-    return { id: host.id, name: host.name.trim(), type: 'local' };
+    return { id: host.id, name: host.name.trim(), type: 'local', icon: host.icon || '🖥️' };
   }
 
   // Remote host
@@ -101,6 +107,7 @@ function validateHost(host, index) {
     id: host.id,
     name: host.name.trim(),
     type: 'remote',
+    icon: host.icon || randomEmoji(),
     host: h,
     username: u,
     sshPort: validatePort(host.sshPort, `${prefix}.sshPort`),
@@ -238,11 +245,13 @@ function createHostStore(userDataPath) {
 
 module.exports = {
   CURRENT_SCHEMA_VERSION,
+  DEFAULT_EMOJIS,
   DEFAULT_HOSTS,
   cloneDefaults,
   createHostStore,
   getSettingsPath,
   migrateV2,
+  randomEmoji,
   validateHost,
   validateSettings,
 };

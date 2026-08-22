@@ -7,19 +7,20 @@ const { cloneDefaults, createHostStore, validateHost, validateSettings } = requi
 
 test('validates a local host', () => {
   const h = validateHost({ id: 'local', name: '本机', type: 'local' }, 0);
-  assert.deepEqual(h, { id: 'local', name: '本机', type: 'local' });
+  assert.deepEqual(h, { id: 'local', name: '本机', type: 'local', icon: '🖥️' });
 });
 
 test('validates a remote host', () => {
   const h = validateHost({
     id: 'abc', name: 'Dev', type: 'remote',
-    host: '10.0.0.1', username: 'root', sshPort: 22, localPort: 3080,
+    host: '10.0.0.1', username: 'root', sshPort: 22,
     identityFile: null, hostKeyPolicy: 'accept-new',
     autoStartRemoteDsh: true, autoStopRemoteDsh: true, autoInstallRemoteDsh: true,
   }, 0);
   assert.equal(h.type, 'remote');
   assert.equal(h.host, '10.0.0.1');
   assert.equal(h.autoInstallRemoteDsh, true);
+  assert.ok(h.icon, 'icon should be auto-assigned');
 });
 
 test('rejects remote host with missing host', () => {

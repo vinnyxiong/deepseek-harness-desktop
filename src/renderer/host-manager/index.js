@@ -21,6 +21,7 @@ const configDialog = $('#config-dialog');
 
 // Config dialog fields
 const cfgName = $('#cfg-name');
+const cfgIcon = $('#cfg-icon');
 const cfgHost = $('#cfg-host');
 const cfgUsername = $('#cfg-username');
 const cfgSshPort = $('#cfg-ssh-port');
@@ -83,13 +84,18 @@ function renderHostList() {
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', String(selectedHostId === host.id));
     li.innerHTML = `
-      <span class="host-item-icon ${snap.state}"></span>
+      <span class="host-item-emoji" title="点击修改图标">${esc(host.icon || '🖥️')}</span>
       <div class="host-item-info">
         <div class="host-item-name">${esc(host.name)}</div>
         <div class="host-item-meta">${stateLabel(snap)}${snap.endpoint ? ' · ' + new URL(snap.endpoint).port : ''}</div>
       </div>
+      <span class="host-item-dot ${snap.state}"></span>
     `;
     li.addEventListener('click', () => selectHost(host.id));
+    li.querySelector('.host-item-emoji').addEventListener('click', e => {
+      e.stopPropagation();
+      showEmojiPicker(host.id);
+    });
     hostList.appendChild(li);
   }
 }
@@ -227,6 +233,7 @@ configBtn.addEventListener('click', () => {
   const host = hosts.find(h => h.id === selectedHostId);
   if (!host) return;
   const isRemote = host.type === 'remote';
+  cfgIcon.textContent = host.icon || '🖥️';
   cfgName.value = host.name || '';
   cfgSsh.hidden = !isRemote;
   cfgSshPolicy.hidden = !isRemote;
@@ -247,7 +254,7 @@ configBtn.addEventListener('click', () => {
 $('#save-config-btn').addEventListener('click', () => doAction(async () => {
   const host = hosts.find(h => h.id === selectedHostId);
   if (!host) return;
-  const updated = { ...host, name: cfgName.value.trim() || host.name };
+  const updated = { ...host, name: cfgName.value.trim() || host.name, icon: cfgIcon.textContent.trim() || host.icon };
   delete updated.localPort;
   if (host.type === 'remote') {
     updated.host = cfgHost.value.trim();
@@ -277,6 +284,82 @@ $('#delete-config-btn').addEventListener('click', () => doAction(async () => {
 }));
 
 $('#cancel-config-btn').addEventListener('click', () => configDialog.close());
+
+// Emoji picker
+const EMOJI_LIST = ['🖥️', '🖥', '🖳', '💻', '🖧', '🖴', '🖵', '🗄️', '🛠️', '📦', '🚀', '⚡', '🔧', '🔮', '🌐', '💡', '🦾', '🏠', '🌍', '📡', '🖥️', '⌨️', '🖱️', '🖲️', '🔌', '💾', '📀', '🔋', '🧠', '🤖', '🔥', '⭐', '🌀', '🎯', '🏗️', '📊', '🧩', '🪄', '✨', '🛡️'];
+let editingIconForHostId = null;
+
+function showEmojiPicker(hostId) {
+  editingIconForHostId = hostId;
+  let picker = $('#emoji-picker');
+  if (!picker) {
+    picker = document.createElement('div');
+    picker.id = 'emoji-picker';
+    picker.className = 'emoji-picker';
+    picker.innerHTML = EMOJI_LIST.map(e => `<span class="emoji-option" data-emoji="${e}">${e}</span>`).join('');
+    picker.addEventListener('click', e => {
+      const opt = e.target.closest('.emoji-option');
+      if (!opt) return;
+      const emoji = opt.dataset.emoji;
+      doAction(async () => {
+        const host = hosts.find(h => h.id === editingIconForHostId);
+        if (!host) return;
+        const updated = { ...host, icon: emoji };
+        await api.updateHost(updated);
+        await refresh();
+      });
+      picker.classList.remove('visible');
+    });
+    document.body.appendChild(picker);
+  }
+  // Position near the clicked emoji
+  const el = document.querySelector(`.host-item-emoji`);
+  const rect = el?.getBoundingClientRect();
+  if (rect) {
+    picker.style.top = `${rect.bottom + 4}px`;
+    picker.style.left = `${rect.left}px`;
+  }
+  picker.classList.toggle('visible');
+  setTimeout(() => {
+    const closePicker = e => {
+      if (!picker.contains(e.target)) {
+        picker.classList.remove('visible');
+        document.removeEventListener('click', closePicker);
+      }
+    };
+    document.addEventListener('click', closePicker);
+  }, 0);
+}
+
+$('#cfg-icon-btn').addEventListener('click', () => {
+  let picker = $('#emoji-picker');
+  if (!picker) {
+    picker = document.createElement('div');
+    picker.id = 'emoji-picker';
+    picker.className = 'emoji-picker';
+    picker.innerHTML = EMOJI_LIST.map(e => `<span class="emoji-option" data-emoji="${e}">${e}</span>`).join('');
+    picker.addEventListener('click', e => {
+      const opt = e.target.closest('.emoji-option');
+      if (!opt) return;
+      cfgIcon.textContent = opt.dataset.emoji;
+      picker.classList.remove('visible');
+    });
+    document.body.appendChild(picker);
+  }
+  const rect = cfgIcon.getBoundingClientRect();
+  picker.style.top = `${rect.bottom + 4}px`;
+  picker.style.left = `${rect.left}px`;
+  picker.classList.toggle('visible');
+  setTimeout(() => {
+    const closePicker = e => {
+      if (!picker.contains(e.target)) {
+        picker.classList.remove('visible');
+        document.removeEventListener('click', closePicker);
+      }
+    };
+    document.addEventListener('click', closePicker);
+  }, 0);
+});
 
 // Add host dialog
 $('#add-host-btn').addEventListener('click', () => addDialog.showModal());
