@@ -25,6 +25,8 @@ extraResources:
 
 publish:
   provider: github
+  owner: vinnyxiong
+  repo: deepseek-harness-desktop
 
 mac:
   category: public.app-category.developer-tools
