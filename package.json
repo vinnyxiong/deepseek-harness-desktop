@@ -17,7 +17,7 @@
     "dev": "npm run build:icons && electron .",
     "build:icons": "node scripts/generate-icons.mjs",
     "build:icons:mac": "npm run build:icons && node scripts/generate-mac-icon.mjs",
-    "build:bundle": "node scripts/build-dsh-bundle.mjs",
+    "build:bundle": "node scripts/build-dsh-bundle.cjs",
     "pack": "npm run build:icons && npm run build:bundle && electron-builder --dir --publish never",
     "dist": "npm run build:icons && npm run build:bundle && electron-builder --publish never",
     "dist:mac": "npm run build:icons:mac && npm run build:bundle && electron-builder --mac --publish never",
