@@ -140,6 +140,5 @@ app.on('before-quit', event => {
   void (async () => {
     await actions?.idle();
     await manager.dispose();
-    windows.closeAllHostWindows();
   })().finally(() => app.quit());
 });

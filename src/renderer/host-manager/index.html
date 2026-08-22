@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; base-uri 'none'; form-action 'none'">
   <title>DeepSeek Harness</title>
   <link rel="stylesheet" href="./index.css">
 </head>
@@ -23,76 +23,68 @@
 
     <!-- Main area -->
     <main id="main">
-      <!-- Empty state -->
-      <div id="empty-state" class="empty-state" hidden>
-        <div class="empty-icon" aria-hidden="true">DSH</div>
-        <h3>选择一个 Host</h3>
-        <p>从左侧列表选择一个 Host 查看详情</p>
-      </div>
-
-      <!-- Detail panel -->
-      <div id="detail-panel" class="detail-panel" hidden>
-        <!-- Status bar -->
-        <div id="detail-status" class="detail-status" aria-live="polite">
-          <span id="status-text">未连接</span>
-          <span id="status-endpoint" class="status-endpoint" hidden></span>
-        </div>
-
-        <!-- Progress bar -->
-        <div id="progress-bar" class="install-progress" aria-live="polite" hidden>
-          <div class="install-progress-inner">
-            <span class="install-spinner" aria-hidden="true"></span>
-            <span id="progress-bar-text">正在处理...</span>
-          </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="action-bar">
-          <button id="connect-btn" class="primary">连接</button>
+      <!-- Status bar -->
+      <div id="status-bar" class="status-bar" aria-live="polite">
+        <span id="status-text">选择一个 Host</span>
+        <span id="status-endpoint" class="status-endpoint" hidden></span>
+        <div class="status-actions">
+          <button id="connect-btn" class="primary" hidden>连接</button>
           <button id="disconnect-btn" hidden>断开</button>
           <button id="retry-btn" hidden>重试</button>
           <button id="update-btn" class="warning" hidden>更新远程 DSH</button>
+          <button id="config-btn" title="编辑配置">⚙</button>
         </div>
+      </div>
 
-        <!-- Host config form -->
-        <div id="config-form" class="config-form">
-          <div class="config-section">
-            <h3>基本信息</h3>
-            <div class="fields">
-              <label><span>名称</span><input id="host-name" type="text" maxlength="64" placeholder="我的服务器"></label>
-            </div>
-          </div>
+      <!-- Progress bar -->
+      <div id="progress-bar" class="install-progress" aria-live="polite" hidden>
+        <div class="install-progress-inner">
+          <span class="install-spinner" aria-hidden="true"></span>
+          <span id="progress-bar-text">正在处理...</span>
+        </div>
+      </div>
 
-          <div id="ssh-config" class="config-section" hidden>
-            <h3>SSH 配置</h3>
-            <div class="fields grid">
-              <label><span>主机</span><input id="host-field" type="text" maxlength="253" placeholder="10.0.0.1"></label>
-              <label><span>用户</span><input id="username-field" type="text" maxlength="64" placeholder="root"></label>
-              <label><span>SSH 端口</span><input id="ssh-port-field" type="number" min="1" max="65535" value="22"></label>
-              <label><span>私钥路径 <em>可选</em></span><input id="identity-file-field" type="text" placeholder="/Users/name/.ssh/id_ed25519"></label>
-            </div>
-            <div class="fields" style="margin-top: 12px;">
-              <label><span>主机密钥验证</span><select id="host-key-policy-field"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
-            </div>
-          </div>
-
-          <div id="startup-options" class="config-section" hidden>
-            <h3>启动选项</h3>
-            <div class="checkbox-list">
-              <label class="checkbox-label"><input id="auto-start-field" type="checkbox" checked><span><strong>连接时自动启动远程 DSH</strong><small>建立隧道前检查并启动远程服务。</small></span></label>
-              <label class="checkbox-label"><input id="auto-stop-field" type="checkbox" checked><span><strong>断开时自动停止远程 DSH</strong><small>仅停止由此连接管理的远程服务。</small></span></label>
-              <label class="checkbox-label"><input id="auto-install-field" type="checkbox" checked><span><strong>自动传输远程 DSH</strong><small>远程机器未安装 DSH 时，自动传输 DSH 到远程。</small></span></label>
-            </div>
-          </div>
-
-          <div class="action-bar">
-            <button id="save-btn" class="primary">保存配置</button>
-            <button id="delete-btn" class="danger">删除 Host</button>
-          </div>
+      <!-- Webview container -->
+      <div id="webview-container">
+        <div id="webview-placeholder" class="webview-placeholder">
+          <div class="empty-icon" aria-hidden="true">DSH</div>
+          <h3>选择一个 Host</h3>
+          <p>从左侧列表选择一个 Host 并连接</p>
         </div>
       </div>
     </main>
   </div>
+
+  <!-- Config Dialog -->
+  <dialog id="config-dialog">
+    <div class="dialog-content">
+      <h3>编辑 Host 配置</h3>
+      <div class="config-form">
+        <div class="fields">
+          <label><span>名称</span><input id="cfg-name" type="text" maxlength="64" placeholder="我的服务器"></label>
+        </div>
+        <div id="cfg-ssh" class="fields grid" hidden>
+          <label><span>主机</span><input id="cfg-host" type="text" maxlength="253" placeholder="10.0.0.1"></label>
+          <label><span>用户</span><input id="cfg-username" type="text" maxlength="64" placeholder="root"></label>
+          <label><span>SSH 端口</span><input id="cfg-ssh-port" type="number" min="1" max="65535" value="22"></label>
+          <label><span>私钥路径 <em>可选</em></span><input id="cfg-identity-file" type="text" placeholder="/Users/name/.ssh/id_ed25519"></label>
+        </div>
+        <div id="cfg-ssh-policy" class="fields" hidden>
+          <label><span>主机密钥验证</span><select id="cfg-host-key-policy"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
+        </div>
+        <div id="cfg-startup" class="checkbox-list" hidden>
+          <label class="checkbox-label"><input id="cfg-auto-start" type="checkbox" checked><span><strong>连接时自动启动远程 DSH</strong></span></label>
+          <label class="checkbox-label"><input id="cfg-auto-stop" type="checkbox" checked><span><strong>断开时自动停止远程 DSH</strong></span></label>
+          <label class="checkbox-label"><input id="cfg-auto-install" type="checkbox" checked><span><strong>自动传输远程 DSH</strong></span></label>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button id="save-config-btn" class="primary">保存</button>
+        <button id="delete-config-btn" class="danger">删除 Host</button>
+        <button id="cancel-config-btn">取消</button>
+      </div>
+    </div>
+  </dialog>
 
   <!-- Add Host Dialog -->
   <dialog id="add-dialog">

@@ -73,20 +73,13 @@ function registerHostIpc({ actions, manager, windows, store, getWarning }) {
 
   ipcMain.handle('host:connect', (event, hostId) => {
     authorize(event);
-    return runTransaction(async () => {
-      const snapshot = await manager.connect(hostId);
-      if (snapshot.state === 'connected') {
-        await windows.showHostWindow(hostId, snapshot.endpoint);
-      }
-      return snapshot;
-    });
+    return runTransaction(() => manager.connect(hostId));
   });
 
   ipcMain.handle('host:disconnect', (event, hostId) => {
     authorize(event);
     return runTransaction(async () => {
       await manager.disconnect(hostId);
-      windows.closeHostWindow(hostId);
       return manager.getSnapshot(hostId);
     });
   });

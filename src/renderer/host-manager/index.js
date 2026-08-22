@@ -5,37 +5,72 @@ const $ = s => document.querySelector(s);
 const sidebar = $('#sidebar');
 const dragHandle = $('#drag-handle');
 const hostList = $('#host-list');
-const emptyState = $('#empty-state');
-const detailPanel = $('#detail-panel');
-const detailStatus = $('#detail-status');
 const statusText = $('#status-text');
 const statusEndpoint = $('#status-endpoint');
-const progressBar = $('#progress-bar');
-const progressBarText = $('#progress-bar-text');
 const connectBtn = $('#connect-btn');
 const disconnectBtn = $('#disconnect-btn');
 const retryBtn = $('#retry-btn');
 const updateBtn = $('#update-btn');
-const sshConfig = $('#ssh-config');
-const startupOptions = $('#startup-options');
+const configBtn = $('#config-btn');
+const progressBar = $('#progress-bar');
+const progressBarText = $('#progress-bar-text');
+const webviewContainer = $('#webview-container');
+const webviewPlaceholder = $('#webview-placeholder');
 const addDialog = $('#add-dialog');
-const deleteBtn = $('#delete-btn');
+const configDialog = $('#config-dialog');
 
-// Form fields
-const hostName = $('#host-name');
-const hostField = $('#host-field');
-const usernameField = $('#username-field');
-const sshPortField = $('#ssh-port-field');
-const identityFileField = $('#identity-file-field');
-const hostKeyPolicyField = $('#host-key-policy-field');
-const autoStartField = $('#auto-start-field');
-const autoStopField = $('#auto-stop-field');
-const autoInstallField = $('#auto-install-field');
+// Config dialog fields
+const cfgName = $('#cfg-name');
+const cfgHost = $('#cfg-host');
+const cfgUsername = $('#cfg-username');
+const cfgSshPort = $('#cfg-ssh-port');
+const cfgIdentityFile = $('#cfg-identity-file');
+const cfgHostKeyPolicy = $('#cfg-host-key-policy');
+const cfgSsh = $('#cfg-ssh');
+const cfgSshPolicy = $('#cfg-ssh-policy');
+const cfgStartup = $('#cfg-startup');
+const cfgAutoStart = $('#cfg-auto-start');
+const cfgAutoStop = $('#cfg-auto-stop');
+const cfgAutoInstall = $('#cfg-auto-install');
 
 let hosts = [];
 let selectedHostId = null;
 let snapshots = {};
 let busy = false;
+// Map<hostId, webview>
+const webviews = new Map();
+
+// --- Webview management ---
+
+function getOrCreateWebview(hostId, endpoint) {
+  let wv = webviews.get(hostId);
+  if (wv) return wv;
+
+  wv = document.createElement('webview');
+  wv.id = `webview-${hostId}`;
+  wv.setAttribute('src', endpoint);
+  wv.setAttribute('allowpopups', '');
+  wv.setAttribute('partition', `persist:dsh-${hostId}`);
+  wv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:none;';
+  webviewContainer.appendChild(wv);
+  webviews.set(hostId, wv);
+  return wv;
+}
+
+function destroyWebview(hostId) {
+  const wv = webviews.get(hostId);
+  if (wv) {
+    wv.remove();
+    webviews.delete(hostId);
+  }
+}
+
+function showWebview(hostId) {
+  for (const [id, wv] of webviews) {
+    wv.style.display = id === hostId ? '' : 'none';
+  }
+  webviewPlaceholder.hidden = webviews.size > 0;
+}
 
 // --- Render ---
 
@@ -59,38 +94,24 @@ function renderHostList() {
   }
 }
 
-function renderDetail() {
+function renderStatus() {
   const host = hosts.find(h => h.id === selectedHostId);
-  if (!host) {
-    emptyState.hidden = false;
-    detailPanel.hidden = true;
-    return;
-  }
-  emptyState.hidden = true;
-  detailPanel.hidden = false;
-
-  const snap = snapshots[host.id] || { state: 'idle' };
-  const isLocal = host.type === 'local';
-  const isRemote = host.type === 'remote';
-  const isTunnel = host.host === 'tunnel';
+  const snap = host ? (snapshots[host.id] || { state: 'idle' }) : { state: 'idle' };
   const isConnected = snap.state === 'connected';
+  const isTransferring = snap.progress?.phase === 'remote-transferring';
+  const isConnecting = snap.state === 'connecting' || isTransferring;
 
-  // Status
-  const phaseLabels = {
-    connecting: '正在连接...',
-    starting: '正在启动本机 DSH...',
-    'remote-start': '正在启动远程 DSH...',
-    'remote-transferring': '正在传输 DSH 到远程服务器...',
-    'ssh-tunnel': '正在建立 SSH 隧道...',
-    'health-check': '正在检查服务状态...',
-    connected: '已连接',
-  };
+  // Status text
   if (snap.state === 'error' && snap.error) {
     statusText.textContent = snap.error;
   } else {
-    statusText.textContent = snap.progress?.message || phaseLabels[snap.progress?.phase] || stateLabel(snap);
+    statusText.textContent = snap.progress?.message || statusLabel(snap);
   }
-  detailStatus.className = `detail-status ${snap.state}`;
+  if (snap.needsUpdate && snap.remoteVersion && snap.bundledVersion) {
+    statusText.textContent += ` (远程: ${snap.remoteVersion} → 可用: ${snap.bundledVersion})`;
+  }
+
+  // Endpoint
   if (snap.endpoint) {
     statusEndpoint.hidden = false;
     statusEndpoint.textContent = snap.endpoint;
@@ -98,13 +119,7 @@ function renderDetail() {
     statusEndpoint.hidden = true;
   }
 
-  // Version mismatch banner
-  if (snap.needsUpdate && snap.remoteVersion && snap.bundledVersion) {
-    statusText.textContent += ` (远程: ${snap.remoteVersion} → 可用: ${snap.bundledVersion})`;
-  }
-
-  // Progress bar (remote transfer)
-  const isTransferring = snap.progress?.phase === 'remote-transferring';
+  // Progress bar
   if (isTransferring) {
     progressBar.hidden = false;
     progressBarText.textContent = snap.progress?.message || '正在传输 DSH...';
@@ -113,28 +128,17 @@ function renderDetail() {
   }
 
   // Buttons
-  const isConnecting = snap.state === 'connecting' || isTransferring;
-  connectBtn.hidden = isConnected || isConnecting;
+  connectBtn.hidden = !host || isConnected || isConnecting;
   disconnectBtn.hidden = !isConnected;
   retryBtn.hidden = snap.state !== 'error';
   updateBtn.hidden = !isConnected || !snap.needsUpdate;
+  configBtn.hidden = !host;
+}
 
-  // Config form
-  hostName.value = host.name || '';
-  sshConfig.hidden = isLocal;
-  startupOptions.hidden = isLocal || isTunnel;
-  deleteBtn.hidden = isLocal; // Can't delete local host
-
-  if (isRemote) {
-    hostField.value = host.host || '';
-    usernameField.value = host.username || '';
-    sshPortField.value = host.sshPort || 22;
-    identityFileField.value = host.identityFile || '';
-    hostKeyPolicyField.value = host.hostKeyPolicy || 'accept-new';
-    autoStartField.checked = host.autoStartRemoteDsh ?? true;
-    autoStopField.checked = host.autoStopRemoteDsh ?? true;
-    autoInstallField.checked = host.autoInstallRemoteDsh ?? true;
-  }
+function statusLabel(snap) {
+  if (snap.progress?.message) return snap.progress.message;
+  const labels = { idle: '未连接', connecting: '连接中...', connected: '已连接', error: '错误' };
+  return labels[snap.state] || snap.state;
 }
 
 function stateLabel(snap) {
@@ -150,7 +154,8 @@ function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').
 function selectHost(hostId) {
   selectedHostId = hostId;
   renderHostList();
-  renderDetail();
+  renderStatus();
+  showWebview(hostId);
 }
 
 async function refresh() {
@@ -165,7 +170,8 @@ async function refresh() {
       selectedHostId = hosts[0].id;
     }
     renderHostList();
-    renderDetail();
+    renderStatus();
+    showWebview(selectedHostId);
   } catch (error) {
     console.error('Failed to refresh:', error);
   }
@@ -182,17 +188,27 @@ async function doAction(action) {
 // --- Event handlers ---
 
 connectBtn.addEventListener('click', () => doAction(async () => {
-  await api.connect(selectedHostId);
+  const snap = await api.connect(selectedHostId);
+  if (snap.state === 'connected' && snap.endpoint) {
+    getOrCreateWebview(selectedHostId, snap.endpoint);
+    showWebview(selectedHostId);
+  }
   await refresh();
 }));
 
 disconnectBtn.addEventListener('click', () => doAction(async () => {
   await api.disconnect(selectedHostId);
+  destroyWebview(selectedHostId);
+  showWebview(selectedHostId);
   await refresh();
 }));
 
 retryBtn.addEventListener('click', () => doAction(async () => {
-  await api.connect(selectedHostId);
+  const snap = await api.connect(selectedHostId);
+  if (snap.state === 'connected' && snap.endpoint) {
+    getOrCreateWebview(selectedHostId, snap.endpoint);
+    showWebview(selectedHostId);
+  }
   await refresh();
 }));
 
@@ -206,35 +222,63 @@ updateBtn.addEventListener('click', () => doAction(async () => {
   await refresh();
 }));
 
-$('#save-btn').addEventListener('click', () => doAction(async () => {
+// Config dialog
+configBtn.addEventListener('click', () => {
   const host = hosts.find(h => h.id === selectedHostId);
   if (!host) return;
-  const updated = {
-    ...host,
-    name: hostName.value.trim() || host.name,
-  };
+  const isRemote = host.type === 'remote';
+  cfgName.value = host.name || '';
+  cfgSsh.hidden = !isRemote;
+  cfgSshPolicy.hidden = !isRemote;
+  cfgStartup.hidden = !isRemote;
+  if (isRemote) {
+    cfgHost.value = host.host || '';
+    cfgUsername.value = host.username || '';
+    cfgSshPort.value = host.sshPort || 22;
+    cfgIdentityFile.value = host.identityFile || '';
+    cfgHostKeyPolicy.value = host.hostKeyPolicy || 'accept-new';
+    cfgAutoStart.checked = host.autoStartRemoteDsh ?? true;
+    cfgAutoStop.checked = host.autoStopRemoteDsh ?? true;
+    cfgAutoInstall.checked = host.autoInstallRemoteDsh ?? true;
+  }
+  configDialog.showModal();
+});
+
+$('#save-config-btn').addEventListener('click', () => doAction(async () => {
+  const host = hosts.find(h => h.id === selectedHostId);
+  if (!host) return;
+  const updated = { ...host, name: cfgName.value.trim() || host.name };
   delete updated.localPort;
   if (host.type === 'remote') {
-    updated.host = hostField.value.trim();
-    updated.username = usernameField.value.trim();
-    updated.sshPort = Number(sshPortField.value) || 22;
-    updated.identityFile = identityFileField.value.trim() || null;
-    updated.hostKeyPolicy = hostKeyPolicyField.value;
-    updated.autoStartRemoteDsh = autoStartField.checked;
-    updated.autoStopRemoteDsh = autoStopField.checked;
-    updated.autoInstallRemoteDsh = autoInstallField.checked;
+    updated.host = cfgHost.value.trim();
+    updated.username = cfgUsername.value.trim();
+    updated.sshPort = Number(cfgSshPort.value) || 22;
+    updated.identityFile = cfgIdentityFile.value.trim() || null;
+    updated.hostKeyPolicy = cfgHostKeyPolicy.value;
+    updated.autoStartRemoteDsh = cfgAutoStart.checked;
+    updated.autoStopRemoteDsh = cfgAutoStop.checked;
+    updated.autoInstallRemoteDsh = cfgAutoInstall.checked;
   }
   await api.updateHost(updated);
+  configDialog.close();
   await refresh();
 }));
 
-deleteBtn.addEventListener('click', () => doAction(async () => {
+$('#delete-config-btn').addEventListener('click', () => doAction(async () => {
+  const host = hosts.find(h => h.id === selectedHostId);
+  if (!host) return;
+  if (host.type === 'local') return;
   if (!confirm('确定要删除这个 Host 吗？')) return;
   await api.deleteHost(selectedHostId);
+  destroyWebview(selectedHostId);
   selectedHostId = null;
+  configDialog.close();
   await refresh();
 }));
 
+$('#cancel-config-btn').addEventListener('click', () => configDialog.close());
+
+// Add host dialog
 $('#add-host-btn').addEventListener('click', () => addDialog.showModal());
 $('#cancel-add-btn').addEventListener('click', () => addDialog.close());
 
@@ -245,7 +289,6 @@ addDialog.querySelectorAll('.add-option').forEach(btn => {
     await api.addHost({ type, name });
     addDialog.close();
     await refresh();
-    // Select the newly added host
     const state = await api.getState();
     const last = state.hosts[state.hosts.length - 1];
     if (last) selectHost(last.id);
@@ -255,8 +298,11 @@ addDialog.querySelectorAll('.add-option').forEach(btn => {
 // Status push
 api.onStatus((hostId, snapshot) => {
   snapshots[hostId] = snapshot;
+  if (snapshot.state === 'connected' && snapshot.endpoint) {
+    getOrCreateWebview(hostId, snapshot.endpoint);
+  }
   renderHostList();
-  if (hostId === selectedHostId) renderDetail();
+  if (hostId === selectedHostId) renderStatus();
 });
 
 api.onRefresh(() => refresh());
@@ -280,7 +326,6 @@ function setSidebarWidth(w) {
   sidebar.style.setProperty('--sidebar-width', `${sidebarWidth}px`);
 }
 
-// Double-click drag handle to toggle collapsed
 dragHandle.addEventListener('dblclick', () => {
   if (sidebar.classList.contains('collapsed') || sidebar.classList.contains('hidden')) {
     setSidebarWidth(240);
@@ -289,7 +334,6 @@ dragHandle.addEventListener('dblclick', () => {
   }
 });
 
-// Drag
 let dragging = false;
 dragHandle.addEventListener('mousedown', e => {
   dragging = true;
@@ -309,7 +353,6 @@ document.addEventListener('mouseup', () => {
   dragHandle.classList.remove('active');
 });
 
-// Expose toggle for menu
 api.onToggleSidebar(() => {
   if (sidebar.classList.contains('hidden')) {
     setSidebarWidth(240);

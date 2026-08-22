@@ -31,9 +31,9 @@ body {
   background: var(--surface);
   transition: width .15s ease;
   flex-shrink: 0;
+  z-index: 2;
 }
 
-/* Collapsed: only show icons */
 #sidebar.collapsed {
   --sidebar-width: 44px;
 }
@@ -45,13 +45,11 @@ body {
 #sidebar.collapsed .host-item { justify-content: center; padding: 10px 0; }
 #sidebar.collapsed .host-list { padding: 4px; }
 
-/* Hidden: collapse completely */
 #sidebar.hidden {
   --sidebar-width: 0;
   min-width: 0; border-right: none; overflow: hidden;
 }
 #sidebar.hidden ~ #drag-handle { display: none; }
-#sidebar.hidden ~ #main { }
 
 /* Drag handle */
 #drag-handle {
@@ -71,7 +69,6 @@ body {
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--line);
 }
-
 .sidebar-header h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--text-muted); text-transform: uppercase; }
 
 .icon-btn {
@@ -102,7 +99,6 @@ body {
 .host-item-icon.connected { background: var(--success); box-shadow: 0 0 0 3px rgba(23, 136, 94, .15); }
 .host-item-icon.error { background: var(--danger); box-shadow: 0 0 0 3px rgba(217, 57, 77, .15); }
 .host-item-icon.connecting { background: var(--warning); animation: pulse 1.2s ease-in-out infinite; }
-.host-item-icon.installing { background: var(--primary); animation: pulse 1.2s ease-in-out infinite; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
@@ -110,64 +106,71 @@ body {
 .host-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .host-item-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 
-/* Main */
-#main { flex: 1; overflow-y: auto; padding: 20px 24px; min-width: 0; }
-
-.empty-state {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 100%; text-align: center; color: var(--text-muted);
+/* Main area */
+#main {
+  flex: 1; display: flex; flex-direction: column;
+  min-width: 0; overflow: hidden;
 }
-.empty-icon {
-  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
-  border-radius: 10px; background: var(--primary-soft); color: var(--primary);
-  font-size: 12px; font-weight: 800; margin-bottom: 10px;
-}
-.empty-state h3 { margin: 0 0 4px; font-size: 14px; color: var(--text); }
-.empty-state p { margin: 0; font-size: 12px; color: var(--text-muted); }
-
-.empty-state[hidden], .detail-panel[hidden], #ssh-config[hidden], #startup-options[hidden] { display: none !important; }
 
 /* Status bar */
-.detail-status {
+.status-bar {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; border-radius: var(--radius-sm);
-  margin-bottom: 12px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
   font-size: 12px; font-weight: 560;
+  flex-shrink: 0;
+  min-height: 36px;
 }
-.detail-status { border: 1px solid var(--line); background: var(--surface-muted); }
-.detail-status.connected { border-color: #ccebd9; background: var(--success-bg); color: var(--success); }
-.detail-status.error { border-color: #ffd8dc; background: var(--danger-bg); color: var(--danger); }
-.detail-status.connecting { border-color: #f7ddb1; background: var(--warning-bg); color: var(--warning); }
-.detail-status.installing { border-color: #dcd8ff; background: var(--primary-soft); color: var(--primary); }
+.status-bar #status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-endpoint { font-family: monospace; font-size: 11px; color: var(--text-muted); }
+.status-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
-.status-endpoint { font-family: monospace; font-size: 12px; }
-
-/* Install progress */
+/* Progress bar */
 .install-progress {
-  display: flex; align-items: center; margin-bottom: 12px;
-  padding: 8px 12px; border: 1px solid #dcd8ff; border-radius: var(--radius-sm);
-  background: var(--primary-soft); color: var(--primary); font-size: 12px;
+  display: flex; align-items: center;
+  padding: 5px 14px; border-bottom: 1px solid #dcd8ff;
+  background: var(--primary-soft); color: var(--primary);
+  font-size: 12px; flex-shrink: 0;
 }
 .install-progress[hidden] { display: none; }
 .install-progress-inner { display: flex; align-items: center; gap: 10px; }
 .install-spinner {
-  width: 16px; height: 16px; flex-shrink: 0;
+  width: 14px; height: 14px; flex-shrink: 0;
   border: 2px solid #c4bfff; border-top-color: var(--primary); border-radius: 50%;
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Action bar */
-.action-bar {
-  display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap;
+/* Webview container */
+#webview-container {
+  flex: 1; position: relative; background: var(--page);
+}
+#webview-container webview {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  border: none;
 }
 
+.webview-placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; text-align: center; color: var(--text-muted);
+}
+.webview-placeholder[hidden] { display: none; }
+.empty-icon {
+  width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; background: var(--primary-soft); color: var(--primary);
+  font-size: 12px; font-weight: 800; margin-bottom: 10px;
+}
+.webview-placeholder h3 { margin: 0 0 4px; font-size: 14px; color: var(--text); }
+.webview-placeholder p { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+/* Buttons */
 button {
-  min-height: 30px; padding: 5px 12px;
-  border: 1px solid var(--line-strong); border-radius: 7px;
+  min-height: 28px; padding: 4px 10px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
   background: var(--surface); color: var(--text);
-  font-size: 12px; font-weight: 600; cursor: pointer;
-  transition: all .15s;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: all .15s; white-space: nowrap;
 }
 button:hover { background: var(--surface-muted); border-color: #aeb7cd; }
 button:disabled { opacity: .5; cursor: not-allowed; }
@@ -178,47 +181,11 @@ button.danger:hover { background: var(--danger-bg); }
 button.warning { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
 button.warning:hover { background: #fef3c7; }
 
-/* Config form */
-.config-form { margin-top: 0; }
-.config-section {
-  padding: 14px; margin-bottom: 12px;
-  border: 1px solid var(--line); border-radius: var(--radius-md);
-  background: var(--surface); box-shadow: var(--shadow);
-}
-.config-section h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; }
-
-.fields { display: flex; flex-direction: column; gap: 8px; }
-.fields.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
-label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text); }
-label span em { font-weight: 400; color: var(--text-subtle); font-style: normal; }
-
-input, select {
-  height: 32px; padding: 4px 8px;
-  border: 1px solid var(--line-strong); border-radius: 6px;
-  background: var(--surface); color: var(--text); font-size: 12px;
-  outline: none; transition: border-color .15s, box-shadow .15s;
-}
-input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
-
-.checkbox-list { display: flex; flex-direction: column; gap: 4px; }
-.checkbox-label {
-  display: flex; flex-direction: row; align-items: flex-start; gap: 8px;
-  padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
-  cursor: pointer; transition: background .15s;
-}
-.checkbox-label:hover { background: var(--surface-muted); }
-.checkbox-label:has(input:checked) { border-color: #dcd8ff; background: var(--primary-soft); }
-.checkbox-label input { width: 15px; height: 15px; margin-top: 1px; accent-color: var(--primary); }
-.checkbox-label span { display: flex; flex-direction: column; gap: 2px; }
-.checkbox-label strong { font-size: 12px; }
-.checkbox-label small { font-size: 11px; color: var(--text-muted); }
-
-/* Dialog */
+/* Config dialog */
 dialog {
   border: none; border-radius: var(--radius-lg); padding: 0;
   box-shadow: 0 20px 60px rgba(0,0,0,.15); background: var(--surface);
-  min-width: 320px;
+  min-width: 380px; max-width: 480px;
 }
 dialog::backdrop { background: rgba(0,0,0,.3); }
 .dialog-content { padding: 24px; }
@@ -236,7 +203,32 @@ dialog::backdrop { background: rgba(0,0,0,.3); }
 .remote-icon { background: #eeedff; }
 .add-option strong { display: block; font-size: 13px; margin-bottom: 2px; }
 .add-option small { display: block; font-size: 11px; color: var(--text-muted); }
-.dialog-actions { display: flex; justify-content: flex-end; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+/* Config form fields */
+.config-form { margin-top: 0; }
+.fields { display: flex; flex-direction: column; gap: 8px; }
+.fields.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: var(--text); }
+label span em { font-weight: 400; color: var(--text-subtle); font-style: normal; }
+input, select {
+  height: 32px; padding: 4px 8px;
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--surface); color: var(--text); font-size: 12px;
+  outline: none; transition: border-color .15s, box-shadow .15s;
+}
+input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+.checkbox-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.checkbox-label {
+  display: flex; flex-direction: row; align-items: flex-start; gap: 8px;
+  padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
+  cursor: pointer; transition: background .15s;
+}
+.checkbox-label:hover { background: var(--surface-muted); }
+.checkbox-label:has(input:checked) { border-color: #dcd8ff; background: var(--primary-soft); }
+.checkbox-label input { width: 15px; height: 15px; margin-top: 1px; accent-color: var(--primary); }
+.checkbox-label span { display: flex; flex-direction: column; gap: 2px; }
+.checkbox-label strong { font-size: 12px; }
 
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
