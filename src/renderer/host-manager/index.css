@@ -175,6 +175,8 @@ button.primary { background: var(--primary); border-color: var(--primary); color
 button.primary:hover { background: var(--primary-strong); }
 button.danger { color: var(--danger); border-color: #f2c2c8; }
 button.danger:hover { background: var(--danger-bg); }
+button.warning { color: #b45309; border-color: #fcd34d; background: #fffbeb; }
+button.warning:hover { background: #fef3c7; }
 
 /* Config form */
 .config-form { margin-top: 0; }

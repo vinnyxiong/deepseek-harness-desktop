@@ -15,6 +15,7 @@ const progressBarText = $('#progress-bar-text');
 const connectBtn = $('#connect-btn');
 const disconnectBtn = $('#disconnect-btn');
 const retryBtn = $('#retry-btn');
+const updateBtn = $('#update-btn');
 const sshConfig = $('#ssh-config');
 const startupOptions = $('#startup-options');
 const addDialog = $('#add-dialog');
@@ -97,6 +98,11 @@ function renderDetail() {
     statusEndpoint.hidden = true;
   }
 
+  // Version mismatch banner
+  if (snap.needsUpdate && snap.remoteVersion && snap.bundledVersion) {
+    statusText.textContent += ` (远程: ${snap.remoteVersion} → 可用: ${snap.bundledVersion})`;
+  }
+
   // Progress bar (remote transfer)
   const isTransferring = snap.progress?.phase === 'remote-transferring';
   if (isTransferring) {
@@ -111,6 +117,7 @@ function renderDetail() {
   connectBtn.hidden = isConnected || isConnecting;
   disconnectBtn.hidden = !isConnected;
   retryBtn.hidden = snap.state !== 'error';
+  updateBtn.hidden = !isConnected || !snap.needsUpdate;
 
   // Config form
   hostName.value = host.name || '';
@@ -186,6 +193,16 @@ disconnectBtn.addEventListener('click', () => doAction(async () => {
 
 retryBtn.addEventListener('click', () => doAction(async () => {
   await api.connect(selectedHostId);
+  await refresh();
+}));
+
+updateBtn.addEventListener('click', () => doAction(async () => {
+  if (!confirm('确定要更新远程 DSH 吗？更新过程中连接会暂时中断。')) return;
+  try {
+    await api.updateRemoteDsh(selectedHostId);
+  } catch (error) {
+    console.error('Failed to update remote DSH:', error);
+  }
   await refresh();
 }));
 

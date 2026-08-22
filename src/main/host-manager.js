@@ -41,7 +41,7 @@ class HostManager extends EventEmitter {
     const conn = this.connections.get(hostId);
     if (!conn) {
       const host = this.getHost(hostId);
-      return { hostId, state: 'idle', mode: host?.type === 'remote' ? 'managedSsh' : 'local', endpoint: null, error: null, remoteDsh: null, progress: null };
+      return { hostId, state: 'idle', mode: host?.type === 'remote' ? 'managedSsh' : 'local', endpoint: null, error: null, remoteDsh: null, progress: null, needsUpdate: false, remoteVersion: null, bundledVersion: null };
     }
     return {
       hostId,
@@ -51,6 +51,9 @@ class HostManager extends EventEmitter {
       error: conn.error || null,
       remoteDsh: conn.remoteDshState || null,
       progress: conn.progress || null,
+      needsUpdate: conn.remoteVersionState?.needsUpdate || false,
+      remoteVersion: conn.remoteVersionState?.remoteVersion || null,
+      bundledVersion: conn.remoteVersionState?.bundledVersion || null,
     };
   }
 
@@ -98,6 +101,12 @@ class HostManager extends EventEmitter {
       conn.progress = { phase: 'connected', message: '已连接' };
       this.emitStatus(hostId);
       this.startMonitor(hostId, conn, handle);
+
+      // Check remote DSH version match after connection is established
+      if (host.type === 'remote' && this.remoteDsh) {
+        this.checkRemoteDshVersionMatch(hostId).catch(() => {});
+      }
+
       return this.getSnapshot(hostId);
     } catch (error) {
       conn.state = 'error';
@@ -237,12 +246,48 @@ class HostManager extends EventEmitter {
     return callDsh(conn.handle.endpoint, 'settings.describe', {});
   }
 
+  async checkRemoteDshVersionMatch(hostId) {
+    const conn = this.connections.get(hostId);
+    if (!conn?.settings || conn.settings.type !== 'remote') {
+      return { needsUpdate: false };
+    }
+    try {
+      const remote = await this.remoteDsh.getRemoteDshVersion(conn.settings);
+      const bundled = this.remoteDsh.getBundledDshVersion();
+      const needsUpdate = remote.version !== 'unknown' && remote.version !== bundled;
+      const result = { needsUpdate, remoteVersion: remote.version, bundledVersion: bundled };
+      conn.remoteVersionState = result;
+      this.emitStatus(hostId);
+      return result;
+    } catch {
+      return { needsUpdate: false };
+    }
+  }
+
   async updateRemoteDsh(hostId) {
     const conn = this.connections.get(hostId);
     if (!conn?.settings || conn.settings.type !== 'remote') {
       throw new Error('Remote DSH management is only available for remote hosts');
     }
-    return this.remoteDsh.updateRemoteDsh(conn.settings);
+    conn.progress = { phase: 'remote-transferring', message: '正在更新远程 DSH...' };
+    this.emitStatus(hostId);
+    try {
+      const result = await this.remoteDsh.updateRemoteDsh(conn.settings);
+      // Stop and restart remote DSH with new version
+      if (conn.remoteDshState?.pid) {
+        await this.remoteDsh.stopRemoteDsh(conn.settings, conn.remoteDshState.pid);
+      }
+      const startResult = await this.remoteDsh.startRemoteDsh(conn.settings, {
+        autoInstall: false,
+      });
+      conn.remoteDshState = { running: true, pid: startResult.pid, port: startResult.port };
+      conn.progress = { phase: 'connected', message: '已连接' };
+      this.emitStatus(hostId);
+      return result;
+    } catch (error) {
+      conn.progress = null;
+      throw error;
+    }
   }
 
   // --- Monitor ---

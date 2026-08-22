@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('desktopHosts', Object.freeze({
   deleteHost: hostId => ipcRenderer.invoke('host:delete', hostId),
   connect: hostId => ipcRenderer.invoke('host:connect', hostId),
   disconnect: hostId => ipcRenderer.invoke('host:disconnect', hostId),
+  updateRemoteDsh: hostId => ipcRenderer.invoke('host:remote-dsh-update', hostId),
   onRefresh(callback) {
     const listener = () => callback();
     ipcRenderer.on('host:refresh', listener);

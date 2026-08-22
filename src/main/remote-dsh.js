@@ -216,4 +216,4 @@ async function updateRemoteDsh(settings, opts = {}) {
   return { output: `Updated to version ${version.version}` };
 }
 
-module.exports = { buildRemoteSshArgs, checkRemoteDshInstalled, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, transferRemoteDsh, updateRemoteDsh };
+module.exports = { buildRemoteSshArgs, checkRemoteDshInstalled, getBundledDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, transferRemoteDsh, updateRemoteDsh };
