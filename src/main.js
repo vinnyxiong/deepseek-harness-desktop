@@ -110,6 +110,9 @@ async function initialize() {
 
   buildMenu();
   windows.showHostManager();
+
+  // Auto-update (only in packaged builds)
+  require('./main/auto-updater').initAutoUpdater({ app, windows });
 }
 
 const lock = app.requestSingleInstanceLock();

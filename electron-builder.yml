@@ -23,6 +23,9 @@ extraResources:
   - from: dsh-bundle.version
     to: dsh-bundle.version
 
+publish:
+  provider: github
+
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
