@@ -25,6 +25,8 @@ extraResources:
     to: dsh-bundle.tar.gz
   - from: dsh-bundle.version
     to: dsh-bundle.version
+  - from: dsh-bundle.manifest.json
+    to: dsh-bundle.manifest.json
 
 publish:
   provider: github
@@ -55,4 +57,4 @@ linux:
 
 nsis:
   oneClick: false
-  allowToChangeInstallationDirectory: true
+  allowChangeInstallationDirectory: true

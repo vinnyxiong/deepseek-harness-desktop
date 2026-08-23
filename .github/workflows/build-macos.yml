@@ -1,4 +1,4 @@
-name: Build macOS installers
+name: Build installers
 
 on:
   workflow_dispatch:
@@ -10,12 +10,72 @@ permissions:
   contents: write
 
 concurrency:
-  group: macos-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Linux remote-bundle builder
+  #
+  # Produces the linux-x64-gnu DSH bundle (tarball + manifest + version file) as
+  # a workflow artifact. All macOS / Windows jobs depend on this artifact and
+  # must NEVER build the bundle themselves (native modules must be compiled on
+  # the target libc/architecture).
+  # ---------------------------------------------------------------------------
+  build-linux-bundle:
+    name: Linux x64 remote bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify build host
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = "Linux"
+          test "$(uname -m)" = "x86_64"
+          ldd --version 2>&1 | grep -qi glibc || ldd --version 2>&1 | grep -qi 'GNU libc'
+          echo "Build host: linux-x64-gnu (OK)"
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build remote bundle
+        run: npm run build:bundle
+
+      - name: Verify bundle
+        run: npm run verify:bundle
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-remote-bundle-linux-x64-gnu
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dsh-bundle.tar.gz
+            dsh-bundle.manifest.json
+            dsh-bundle.version
+
+  # ---------------------------------------------------------------------------
+  # macOS installers (x64 + arm64)
+  #
+  # Download the pre-built linux-x64-gnu bundle and embed it via extraResources.
+  # The prepare:bundle script is NOT run; we use build:bundle:fetch explicitly
+  # via DSH_BUNDLE_DIR to guarantee Mac never compiles native modules.
+  # ---------------------------------------------------------------------------
   build-macos:
     name: macOS ${{ matrix.arch }}
+    needs: build-linux-bundle
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +99,22 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Download remote DSH bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: dsh-remote-bundle-linux-x64-gnu
+          path: .dsh-bundle
+
+      - name: Verify downloaded bundle on Mac runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .dsh-bundle/dsh-bundle.tar.gz
+          test -f .dsh-bundle/dsh-bundle.manifest.json
+          test -f .dsh-bundle/dsh-bundle.version
+          # Confirm the Mac runner is NOT linux-x64-gnu (we should not be building locally)
+          test "$(uname -s)" = "Darwin" && echo "Mac runner detected - using pre-built Linux bundle (correct)"
 
       - name: Verify native runner architecture
         shell: bash
@@ -65,7 +141,12 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Run desktop tests
-        run: npm run check
+        env:
+          DSH_BUNDLE_DIR: ${{ github.workspace }}/.dsh-bundle
+        run: |
+          set -euo pipefail
+          npm run build:bundle:fetch
+          npm run check
 
       - name: Prepare signing and notarization
         id: signing
@@ -135,12 +216,14 @@ jobs:
       - name: Build unsigned installers
         if: ${{ steps.signing.outputs.signed != 'true' }}
         env:
+          DSH_BUNDLE_DIR: ${{ github.workspace }}/.dsh-bundle
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run dist:ci:mac:${{ matrix.arch }}
 
       - name: Build signed installers without notarization
         if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize != 'true' }}
         env:
+          DSH_BUNDLE_DIR: ${{ github.workspace }}/.dsh-bundle
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
@@ -150,6 +233,7 @@ jobs:
       - name: Build signed and notarized installers with API key
         if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize_method == 'api_key' }}
         env:
+          DSH_BUNDLE_DIR: ${{ github.workspace }}/.dsh-bundle
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
@@ -161,6 +245,7 @@ jobs:
       - name: Build signed and notarized installers with Apple ID
         if: ${{ steps.signing.outputs.signed == 'true' && steps.signing.outputs.notarize_method == 'apple_id' }}
         env:
+          DSH_BUNDLE_DIR: ${{ github.workspace }}/.dsh-bundle
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           CSC_NAME: ${{ secrets.MAC_CSC_NAME }}
@@ -178,6 +263,27 @@ jobs:
           if [[ -n "${APPLE_API_KEY:-}" ]]; then
             rm -f "$APPLE_API_KEY"
           fi
+
+      - name: Verify embedded remote bundle is linux-x64-gnu
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps=()
+          while IFS= read -r -d '' candidate; do
+            apps+=("$candidate")
+          done < <(find release -type d -name 'DeepSeek Harness.app' -print0)
+          if [[ "${#apps[@]}" -ne 1 ]]; then
+            printf 'Expected one packaged app, found %s\n' "${#apps[@]}" >&2
+            find release -print
+            exit 1
+          fi
+          resources="${apps[0]}/Contents/Resources"
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('$resources/dsh-bundle.manifest.json','utf8'));
+            if (m.triple !== 'linux-x64-gnu') { console.error('Embedded bundle has wrong triple:', m.triple); process.exit(1); }
+            console.log('Embedded remote bundle:', m.triple, 'v' + m.version);
+          "
 
       - name: Locate packaged application
         shell: bash
@@ -216,11 +322,14 @@ jobs:
             "@deepseek-ai/dsh-invariants/package.json"
             "@deepseek-ai/dsh-subprocess/package.json"
             "@deepseek-ai/dsh-workflow/package.json"
-            "@deepseek-ai/dsh-web-frontend/dist/index.html"
           )
           for item in "${required[@]}"; do
             test -f "$runtime/$item" || { echo "Missing runtime file: $item" >&2; exit 1; }
           done
+          # Remote bundle resources must be present
+          test -f "$APP_PATH/Contents/Resources/dsh-bundle.tar.gz"
+          test -f "$APP_PATH/Contents/Resources/dsh-bundle.manifest.json"
+          test -f "$APP_PATH/Contents/Resources/dsh-bundle.version"
 
       - name: Verify bundled desktop connection UI
         shell: bash
@@ -236,20 +345,13 @@ jobs:
             "/src/main/dsh-api-client.js"
             "/src/main/i18n.js"
             "/src/main/locale-service.js"
-            "/src/main/notification-ipc.js"
-            "/src/main/notification-service.js"
-            "/src/main/notification-settings-store.js"
+            "/src/main/remote-dsh.js"
+            "/src/main/host-manager.js"
             "/src/main/managed-ssh.js"
             "/src/main/settings-store.js"
             "/src/preload/connection-settings.js"
-            "/src/preload/notification-settings.js"
-            "/src/renderer/notification-settings/index.html"
-            "/src/renderer/notification-settings/index.js"
-            "/src/renderer/notification-settings/index.css"
             "/src/locales/en.json"
             "/src/locales/zh.json"
-            "/src/locales/notification-settings.en.json"
-            "/src/locales/notification-settings.zh.json"
             "/src/renderer/connection-settings/index.html"
             "/src/renderer/connection-settings/index.js"
             "/src/renderer/connection-settings/index.css"

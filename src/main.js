@@ -8,7 +8,7 @@ const { registerHostIpc } = require('./main/ipc');
 const { LocaleService } = require('./main/locale-service');
 const { startLocalDsh } = require('./main/local-dsh');
 const { startManagedSsh } = require('./main/managed-ssh');
-const { discoverRemoteDsh, startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh } = require('./main/remote-dsh');
+const { discoverRemoteDsh, startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh, getBundledDshVersion, getBundledTriple, probeRemoteHost, checkRemoteIdentity, readBundledManifest, performRemoteHealthCheck } = require('./main/remote-dsh');
 const { createHostStore } = require('./main/host-store');
 const { createWindowManager } = require('./main/windows');
 
@@ -64,7 +64,7 @@ async function initialize() {
       onUnexpectedExit,
       remotePort,
     }),
-    remoteDsh: { discoverRemoteDsh, startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh },
+    remoteDsh: { discoverRemoteDsh, startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh, getBundledDshVersion, getBundledTriple, probeRemoteHost, checkRemoteIdentity, readBundledManifest, performRemoteHealthCheck },
   });
 
   manager.setHosts(settings.hosts);

@@ -1,4 +1,8 @@
-// Build dsh-bundle.tar.gz for SSH transfer to remote hosts.
+// Build dsh-bundle.tar.gz for SSH transfer to remote Linux x64 glibc hosts.
+// This bundle is cross-platform: it MUST be built on a Linux x64 glibc host so
+// that native modules match the target runtime. macOS and Windows CI jobs
+// download a pre-built artifact instead of rebuilding the bundle locally.
+//
 // Usage: node scripts/build-dsh-bundle.cjs [--force]
 
 const crypto = require('node:crypto');
@@ -10,17 +14,40 @@ const {
 const { basename, join, relative, resolve, sep } = require('node:path');
 
 const root = resolve(__dirname, '..');
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
+const MANIFEST_SCHEMA = 'dsh-remote-bundle';
+const MANIFEST_SCHEMA_VERSION = 1;
+const TARGET_PLATFORM = 'linux';
+const TARGET_ARCH = 'x64';
+const TARGET_LIBC = 'gnu';
+const TARGET_TRIPLE = `${TARGET_PLATFORM}-${TARGET_ARCH}-${TARGET_LIBC}`;
+
 const OUTPUT_NAME = 'dsh-bundle.tar.gz';
 const VERSION_NAME = 'dsh-bundle.version';
+const MANIFEST_NAME = 'dsh-bundle.manifest.json';
 const METADATA_NAME = '.dsh-bundle.cache.json';
+
+// Dev-only packages and files that never need to be sent to a remote host.
+// AppleDouble / resource-fork files (._*) and .DS_Store are produced by macOS
+// tar/zip operations and must never leak into the bundle.
 const EXCLUDE = new Set([
   'electron', 'electron-builder', 'electron-updater', 'sharp', 'png-to-ico',
   '.cache', '.package-lock.json',
 ]);
 
-function isExcluded(relativePath) {
-  return relativePath.split(sep).some((part) => EXCLUDE.has(part));
+const EXCLUDE_PREFIXES = ['._'];
+const EXCLUDE_NAMES = new Set(['.DS_Store']);
+
+function isExcluded(relPath) {
+  const parts = relPath.split(sep);
+  for (const part of parts) {
+    if (EXCLUDE.has(part)) return true;
+    if (EXCLUDE_NAMES.has(part)) return true;
+    for (const prefix of EXCLUDE_PREFIXES) {
+      if (part.startsWith(prefix)) return true;
+    }
+  }
+  return false;
 }
 
 function listInputs(directory, base = directory) {
@@ -30,7 +57,7 @@ function listInputs(directory, base = directory) {
     const rel = relative(base, path);
     if (isExcluded(rel)) continue;
     if (entry.isDirectory()) result.push(...listInputs(path, base));
-    else result.push({ path, relativePath: rel });
+    else if (entry.isFile() || entry.isSymbolicLink()) result.push({ path, relativePath: rel });
   }
   return result;
 }
@@ -47,6 +74,10 @@ function contentFingerprint(directory) {
   return hash.digest('hex');
 }
 
+function readFileSafe(path) {
+  try { return readFileSync(path, 'utf8'); } catch { return null; }
+}
+
 function readMetadata(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; }
 }
@@ -59,6 +90,54 @@ function validateBundle(path, exec = execFileSync) {
   } catch { return false; }
 }
 
+// Detect the build host's platform/arch/libc and enforce that it matches the
+// bundle target. This prevents accidentally producing a macOS-arm64 bundle and
+// shipping it to a Linux x64 host.
+function detectBuildHost(exec = execFileSync) {
+  const platform = process.platform;
+  const arch = process.arch;
+  let libc = 'unknown';
+  if (platform === 'linux') {
+    try {
+      const lddOut = exec('ldd', ['--version'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+      // musl ldd reports "musl libc"; glibc ldd starts with "ldd (GNU libc)" or similar.
+      if (/musl/i.test(lddOut)) libc = 'musl';
+      else if (/GNU libc|glibc/i.test(lddOut)) libc = 'gnu';
+    } catch {
+      // Some environments (e.g. Alpine without ldd wrapper) may fail; fall through.
+    }
+  }
+  return { platform, arch, libc };
+}
+
+function validateBuildHost(host = detectBuildHost()) {
+  const errors = [];
+  if (host.platform !== TARGET_PLATFORM) {
+    errors.push(`unsupported build platform "${host.platform}" (required: ${TARGET_PLATFORM})`);
+  }
+  if (host.arch !== TARGET_ARCH) {
+    errors.push(`unsupported build arch "${host.arch}" (required: ${TARGET_ARCH})`);
+  }
+  if (host.libc !== TARGET_LIBC) {
+    errors.push(`unsupported build libc "${host.libc}" (required: ${TARGET_LIBC})`);
+  }
+  return errors;
+}
+
+function sha256File(path) {
+  const hash = crypto.createHash('sha256');
+  const { closeSync: close, readSync: read } = require('node:fs');
+  const fd = openSync(path, 'r');
+  try {
+    const buf = Buffer.alloc(1 << 16);
+    let bytes;
+    while ((bytes = read(fd, buf, 0, buf.length, null)) > 0) {
+      hash.update(buf.subarray(0, bytes));
+    }
+  } finally { close(fd); }
+  return hash.digest('hex');
+}
+
 function atomicWrite(path, data) {
   mkdirSync(resolve(path, '..'), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${crypto.randomUUID()}`;
@@ -68,45 +147,135 @@ function atomicWrite(path, data) {
   } finally { rmSync(temp, { force: true }); }
 }
 
-function buildBundle({ projectRoot = root, force = false, exec = execFileSync } = {}) {
+function buildManifest({ version, digest }) {
+  return {
+    schema: MANIFEST_SCHEMA,
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    version,
+    platform: TARGET_PLATFORM,
+    arch: TARGET_ARCH,
+    libc: TARGET_LIBC,
+    triple: TARGET_TRIPLE,
+    digest: `sha256:${digest}`,
+    digestAlgorithm: 'sha256',
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function buildBundle({ projectRoot = root, force = false, exec = execFileSync, detectHost = detectBuildHost } = {}) {
+  // Validate build host before doing any work.
+  const host = detectHost(exec);
+  const hostErrors = validateBuildHost(host);
+  if (hostErrors.length > 0) {
+    const message = [
+      `Cannot build ${TARGET_TRIPLE} DSH bundle on this host (${host.platform}-${host.arch}-${host.libc}):`,
+      ...hostErrors.map(e => `  - ${e}`),
+      '',
+      'The remote DSH bundle contains native modules and must be built on Linux x64 with glibc.',
+      'macOS and Windows CI jobs download the pre-built Linux bundle artifact instead of building locally.',
+    ].join('\n');
+    const error = new Error(message);
+    error.code = 'UNSUPPORTED_BUILD_HOST';
+    error.host = host;
+    throw error;
+  }
+
   const modules = join(projectRoot, 'node_modules');
   const output = join(projectRoot, OUTPUT_NAME);
   const versionPath = join(projectRoot, VERSION_NAME);
+  const manifestPath = join(projectRoot, MANIFEST_NAME);
   const metadataPath = join(projectRoot, METADATA_NAME);
-  const version = JSON.parse(readFileSync(join(modules, '@deepseek-ai', 'dsh', 'package.json'), 'utf8')).version;
+
+  const dshPkgPath = join(modules, '@deepseek-ai', 'dsh', 'package.json');
+  const version = JSON.parse(readFileSync(dshPkgPath, 'utf8')).version;
   const fingerprint = contentFingerprint(modules);
   const metadata = readMetadata(metadataPath);
 
-  if (!force && metadata?.cacheVersion === CACHE_VERSION && metadata.fingerprint === fingerprint
-      && readFileSafe(versionPath) === `${version}\n` && validateBundle(output, exec)) {
-    console.log(`dsh-bundle.tar.gz is up to date (version ${version})`);
-    return { cached: true, fingerprint, version };
+  // Cache is valid when fingerprint matches, version file matches, manifest is
+  // for the same triple and digest matches the file, and the tarball is intact.
+  let cacheHit = false;
+  if (!force && metadata?.cacheVersion === CACHE_VERSION
+      && metadata.fingerprint === fingerprint
+      && metadata.triple === TARGET_TRIPLE
+      && readFileSafe(versionPath) === `${version}\n`) {
+    const existingManifest = readMetadata(manifestPath);
+    if (existingManifest
+        && existingManifest.triple === TARGET_TRIPLE
+        && existingManifest.digest === `sha256:${sha256File(output)}`
+        && validateBundle(output, exec)) {
+      cacheHit = true;
+    }
+  }
+
+  if (cacheHit) {
+    console.log(`${OUTPUT_NAME} is up to date (${TARGET_TRIPLE}, version ${version})`);
+    return { cached: true, fingerprint, version, triple: TARGET_TRIPLE };
   }
 
   const temp = `${output}.tmp-${process.pid}-${crypto.randomUUID()}`;
-  const tarArgs = ['-czf', temp, '-C', modules, ...[...EXCLUDE].flatMap((item) => ['--exclude', item]), '.'];
-  console.log('Creating dsh-bundle.tar.gz...');
+  // Exclude dev packages, AppleDouble resource forks, .DS_Store, and npm caches.
+  const tarExcludes = [
+    ...[...EXCLUDE].flatMap(item => ['--exclude', item]),
+    '--exclude', '._*',
+    '--exclude', '.DS_Store',
+  ];
+  console.log(`Creating ${OUTPUT_NAME} for ${TARGET_TRIPLE}...`);
   try {
-    exec('tar', tarArgs, { stdio: 'inherit' });
+    exec('tar', ['-czf', temp, '-C', modules, ...tarExcludes, '.'], { stdio: 'inherit' });
     if (!validateBundle(temp, exec)) throw new Error('generated bundle failed validation');
+
+    const digest = sha256File(temp);
+    const manifest = buildManifest({ version, digest });
+
     renameSync(temp, output);
     atomicWrite(versionPath, `${version}\n`);
-    atomicWrite(metadataPath, `${JSON.stringify({ cacheVersion: CACHE_VERSION, fingerprint, version }, null, 2)}\n`);
+    atomicWrite(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    atomicWrite(metadataPath, `${JSON.stringify({
+      cacheVersion: CACHE_VERSION,
+      fingerprint,
+      version,
+      triple: TARGET_TRIPLE,
+      digest,
+      manifestCreatedAt: manifest.createdAt,
+    }, null, 2)}\n`);
   } finally { rmSync(temp, { force: true }); }
 
   const size = statSync(output).size;
-  console.log(`dsh-bundle.tar.gz created (version ${version}, ${(size / 1024 / 1024).toFixed(1)} MB)`);
-  return { cached: false, fingerprint, version };
+  console.log(`${OUTPUT_NAME} created (${TARGET_TRIPLE}, version ${version}, ${(size / 1024 / 1024).toFixed(1)} MB)`);
+  return { cached: false, fingerprint, version, triple: TARGET_TRIPLE };
 }
 
-function readFileSafe(path) {
-  try { return readFileSync(path, 'utf8'); } catch { return null; }
-}
+module.exports = {
+  MANIFEST_NAME,
+  MANIFEST_SCHEMA,
+  MANIFEST_SCHEMA_VERSION,
+  METADATA_NAME,
+  OUTPUT_NAME,
+  TARGET_ARCH,
+  TARGET_LIBC,
+  TARGET_PLATFORM,
+  TARGET_TRIPLE,
+  VERSION_NAME,
+  atomicWrite,
+  buildBundle,
+  buildManifest,
+  contentFingerprint,
+  detectBuildHost,
+  isExcluded,
+  listInputs,
+  readMetadata,
+  sha256File,
+  validateBuildHost,
+  validateBundle,
+};
 
+// --- CLI entry point ---
 if (require.main === module) {
-  const unknown = process.argv.slice(2).filter((arg) => arg !== '--force');
-  if (unknown.length) throw new Error(`Unknown argument: ${unknown[0]}`);
-  buildBundle({ force: process.argv.includes('--force') });
+  const force = process.argv.includes('--force');
+  try {
+    buildBundle({ force });
+  } catch (err) {
+    console.error(err.code === 'UNSUPPORTED_BUILD_HOST' ? err.message : err.stack || err.message);
+    process.exit(1);
+  }
 }
-
-module.exports = { atomicWrite, buildBundle, contentFingerprint, isExcluded, listInputs, readMetadata, validateBundle };
