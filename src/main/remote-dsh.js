@@ -3,7 +3,7 @@ const path = require('path');
 const { buildCommonSshOptions, DEFAULT_SSH_PATH } = require('./managed-ssh');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
 
-const DSH_REMOTE_BIN = '~/.local/state/dsh/runner/node_modules/.bin/dsh';
+const DSH_REMOTE_BIN = '~/.local/state/dsh/runner/.bin/dsh';
 const DSH_REMOTE_RUNNER_DIR = '~/.local/state/dsh/runner';
 const DSH_REMOTE_VERSION_FILE = '~/.local/state/dsh/runner/.dsh-version';
 
