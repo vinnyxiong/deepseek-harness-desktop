@@ -60,17 +60,5 @@
     "electron-builder": "^26.15.3",
     "png-to-ico": "^3.0.2",
     "sharp": "^0.35.3"
-  },
-  "build": {
-    "npmRebuild": false,
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "vinnyxiong",
-      "repo": "deepseek-harness-desktop"
-    }
   }
 }
