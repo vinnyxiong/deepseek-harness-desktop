@@ -52,7 +52,7 @@ function getOrCreateWebview(hostId, endpoint) {
   wv.setAttribute('src', endpoint);
   wv.setAttribute('allowpopups', '');
   wv.setAttribute('partition', `persist:dsh-${hostId}`);
-  wv.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:none;';
+  wv.style.cssText = 'display:none;';
 
   // Ensure the DSH page fills the webview — the DSH frontend
   // doesn't set height:100% on html/body/#root by default.

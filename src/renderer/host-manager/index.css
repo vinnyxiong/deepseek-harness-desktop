@@ -172,16 +172,16 @@ button.small { min-height: 24px; padding: 2px 8px; font-size: 11px; }
 
 /* Webview container */
 #webview-container {
-  flex: 1; position: relative; background: var(--page);
+  flex: 1; display: flex; flex-direction: column;
+  position: relative; background: var(--page);
 }
 #webview-container webview {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  border: none;
+  flex: 1; min-height: 0; border: none;
 }
 
 .webview-placeholder {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  height: 100%; text-align: center; color: var(--text-muted);
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; color: var(--text-muted);
 }
 .webview-placeholder[hidden] { display: none; }
 .empty-icon {
