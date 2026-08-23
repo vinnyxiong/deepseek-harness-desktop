@@ -1,23 +1,6 @@
 {
-  "menu.connection": "连接",
-  "menu.connectionSettings": "连接设置…",
-  "menu.notificationSettings": "通知设置…",
-  "menu.reload": "重新加载当前连接",
-  "menu.disconnect": "断开连接",
-  "menu.useLocal": "使用本机 DSH",
   "menu.edit": "编辑",
   "menu.view": "视图",
   "menu.toggleSidebar": "切换侧边栏",
-  "menu.window": "窗口",
-  "notify.agent.completed": "Agent 已完成",
-  "notify.agent.failed": "Agent 运行失败",
-  "notify.agent.stopped": "Agent 已停止",
-  "notify.job.completed": "后台任务已完成",
-  "notify.job.failed": "后台任务失败",
-  "notify.job.killed": "后台任务已终止",
-  "notify.unnamed": "未命名任务",
-  "notify.test.title": "DeepSeek Harness 测试通知",
-  "notify.test.body": "任务完成通知已启用",
-  "menu.restartRemoteDsh": "重启远程 DSH",
-  "menu.stopRemoteDsh": "停止远程 DSH"
+  "menu.window": "窗口"
 }
