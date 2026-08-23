@@ -3,7 +3,7 @@ const { randomUUID } = require('crypto');
 const { validateHost } = require('./host-store');
 
 const CHANNELS = [
-  'host:get-state', 'host:add', 'host:update', 'host:delete',
+  'host:get-state', 'host:set-active', 'host:add', 'host:update', 'host:delete',
   'host:connect', 'host:disconnect',
   'host:remote-dsh-restart', 'host:remote-dsh-stop',
   'host:remote-dsh-version', 'host:remote-dsh-log',
@@ -11,7 +11,7 @@ const CHANNELS = [
   'host:remote-dsh-update',
 ];
 
-function registerHostIpc({ actions, manager, windows, store, getWarning }) {
+function registerHostIpc({ actions, manager, windows, store, getWarning, setActiveHost }) {
   const runTransaction = action => actions.run(action);
 
   const authorize = event => {
@@ -29,6 +29,12 @@ function registerHostIpc({ actions, manager, windows, store, getWarning }) {
     authorize(event);
     const settings = store.get();
     return { hosts: settings.hosts, snapshots: manager.getSnapshots(), warning: getWarning?.() ?? null };
+  });
+
+  ipcMain.handle('host:set-active', (event, hostId) => {
+    authorize(event);
+    if (hostId !== null && !manager.getHost(hostId)) throw new Error('Host not found');
+    setActiveHost?.(hostId);
   });
 
   ipcMain.handle('host:add', (event, input) => {

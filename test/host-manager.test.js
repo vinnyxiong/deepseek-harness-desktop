@@ -109,8 +109,9 @@ test('remote DSH restart stops then starts', async () => {
   calls.length = 0;
   const result = await manager.restartRemoteDsh('r1');
   assert.deepEqual(calls, ['stop', 'start']);
-  assert.equal(result.running, true);
-  assert.equal(result.pid, 10000);
+  assert.equal(result.state, 'connected');
+  assert.equal(result.remoteDsh.running, true);
+  assert.equal(result.remoteDsh.pid, 10000);
   await manager.dispose();
 });
 
@@ -129,8 +130,8 @@ test('remote DSH stop updates state', async () => {
   manager.setHosts([host]);
   await manager.connect('r1');
   const result = await manager.stopRemoteDsh('r1');
-  assert.equal(result.running, false);
-  assert.equal(result.pid, null);
+  assert.equal(result.state, 'idle');
+  assert.equal(result.remoteDsh, null);
   await manager.dispose();
 });
 
@@ -143,7 +144,7 @@ test('host not found throws', async () => {
   assert.throws(() => manager.connect('nonexistent'), /Host not found/);
 });
 
-test('auto-stop remote DSH on disconnect', async () => {
+test('disconnect leaves persistent remote DSH running', async () => {
   let stopped = false;
   const host = { ...remoteHost, autoStartRemoteDsh: true, autoStopRemoteDsh: true };
   const manager = new HostManager({
@@ -159,5 +160,89 @@ test('auto-stop remote DSH on disconnect', async () => {
   manager.setHosts([host]);
   await manager.connect('r1');
   await manager.disconnect('r1');
-  assert.equal(stopped, true);
+  assert.equal(stopped, false);
+});
+
+test('updateRemoteDsh rebuilds the tunnel for the new remote port', async () => {
+  const calls = [];
+  let tunnelNumber = 0;
+  const host = { ...remoteHost, autoStartRemoteDsh: true };
+  const manager = new HostManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async (_settings, _onExit, remotePort) => {
+      tunnelNumber += 1;
+      calls.push(`tunnel:${remotePort}`);
+      return { mode: 'managedSsh', endpoint: `http://127.0.0.1:${3000 + tunnelNumber}`, async stop() { calls.push(`tunnel-stop:${remotePort}`); } };
+    },
+    health: fakeHealth(),
+    remoteDsh: {
+      discoverRemoteDsh: async () => ({ running: false, pid: null, port: null }),
+      startRemoteDsh: async () => tunnelNumber === 0 ? { pid: 1, port: 4001 } : { pid: 2, port: 4002 },
+      stopRemoteDsh: async () => { calls.push('remote-stop'); },
+      updateRemoteDsh: async () => ({ output: 'updated' }),
+      getRemoteDshVersion: async () => ({ version: 'test' }),
+      getBundledDshVersion: () => 'test',
+    },
+  });
+  manager.setHosts([host]);
+  await manager.connect('r1');
+  calls.length = 0;
+  await manager.updateRemoteDsh('r1');
+  assert.deepEqual(calls, ['tunnel-stop:4001', 'remote-stop', 'tunnel:4002']);
+  assert.equal(manager.getSnapshot('r1').endpoint, 'http://127.0.0.1:3002');
+  await manager.dispose();
+});
+
+test('restartRemoteDsh propagates stop failures', async () => {
+  const host = { ...remoteHost, autoStartRemoteDsh: true };
+  const manager = new HostManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({ mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', async stop() {} }),
+    health: fakeHealth(),
+    remoteDsh: {
+      startRemoteDsh: async () => ({ pid: 9999, port: 56789 }),
+      stopRemoteDsh: async () => { throw new Error('SSH stop failed'); },
+    },
+  });
+  manager.setHosts([host]);
+  await manager.connect('r1');
+  await assert.rejects(() => manager.restartRemoteDsh('r1'), /SSH stop failed/);
+});
+
+test('snapshots carry monotonically increasing revisions', async () => {
+  const revisions = [];
+  const manager = new HostManager({
+    startLocal: async () => ({ mode: 'local', endpoint: 'http://127.0.0.1:4100', async stop() {} }),
+    health: fakeHealth(),
+  });
+  manager.setHosts([localHost]);
+  manager.on('status', (_id, snapshot) => revisions.push(snapshot.revision));
+  await manager.connect('local');
+  await manager.disconnect('local');
+  assert.ok(revisions.length >= 3);
+  assert.deepEqual(revisions, [...revisions].sort((a, b) => a - b));
+  assert.equal(new Set(revisions).size, revisions.length);
+});
+
+test('remote discovery uses bounded concurrency', async () => {
+  let active = 0;
+  let maximum = 0;
+  const hosts = Array.from({ length: 5 }, (_, index) => ({ ...remoteHost, id: `r${index}` }));
+  const manager = new HostManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => { throw new Error('not expected'); },
+    health: fakeHealth(),
+    remoteDsh: {
+      discoverRemoteDsh: async () => {
+        active += 1;
+        maximum = Math.max(maximum, active);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        active -= 1;
+        return { running: false, pid: null, port: null };
+      },
+    },
+  });
+  manager.setHosts(hosts);
+  await manager.discoverAndAttachRemoteHosts({ concurrency: 2 });
+  assert.equal(maximum, 2);
 });

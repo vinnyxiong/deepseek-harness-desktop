@@ -8,12 +8,13 @@ const { registerHostIpc } = require('./main/ipc');
 const { LocaleService } = require('./main/locale-service');
 const { startLocalDsh } = require('./main/local-dsh');
 const { startManagedSsh } = require('./main/managed-ssh');
-const { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh } = require('./main/remote-dsh');
+const { discoverRemoteDsh, startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh } = require('./main/remote-dsh');
 const { createHostStore } = require('./main/host-store');
 const { createWindowManager } = require('./main/windows');
 
 let actions, manager, windows, settings, settingsWarning, settingsStore, removeIpc;
 let watcher, localeService;
+let activeHostId = null;
 let quitAfterCleanup = false;
 app.setName('DeepSeek Harness');
 
@@ -25,8 +26,9 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function syncIntegrations(hostId, snapshot) {
-  if (snapshot.state === 'connected' && snapshot.endpoint) {
+function syncIntegrations() {
+  const snapshot = activeHostId ? manager?.getSnapshot(activeHostId) : null;
+  if (snapshot?.state === 'connected' && snapshot.endpoint) {
     void watcher?.setEndpoint(snapshot.endpoint);
     void localeService.setEndpoint(snapshot.endpoint);
   } else {
@@ -62,14 +64,14 @@ async function initialize() {
       onUnexpectedExit,
       remotePort,
     }),
-    remoteDsh: { startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh },
+    remoteDsh: { discoverRemoteDsh, startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh },
   });
 
   manager.setHosts(settings.hosts);
 
   manager.on('status', (hostId, snapshot) => {
     windows.sendHostStatus(hostId, snapshot);
-    syncIntegrations(hostId, snapshot);
+    if (hostId === activeHostId) syncIntegrations();
     buildMenu();
   });
 
@@ -80,10 +82,21 @@ async function initialize() {
   removeIpc = registerHostIpc({
     actions, manager, windows, store: settingsStore,
     getWarning: () => settingsWarning,
+    setActiveHost: hostId => {
+      activeHostId = hostId;
+      syncIntegrations();
+    },
   });
 
   buildMenu();
   windows.showHostManager();
+
+  const localHost = settings.hosts.find(host => host.type === 'local');
+  if (localHost) {
+    activeHostId = localHost.id;
+    manager.connect(localHost.id).catch(error => console.error('Failed to auto-connect local DSH:', error.message));
+  }
+  void manager.discoverAndAttachRemoteHosts().catch(error => console.warn('Remote DSH discovery failed:', error.message));
 
   // Auto-update (only in packaged builds)
   try {

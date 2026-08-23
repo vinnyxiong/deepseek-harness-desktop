@@ -80,6 +80,26 @@ npm ci
 npm run dev
 ```
 
+## Build caches
+
+The DSH bundle and generated application icons use content fingerprints. Re-running a build skips unchanged outputs only when their cache metadata and output validation both succeed. Outputs and metadata are written through temporary files and renamed into place so a failed generation does not replace the last good artifact.
+
+Use the force variants to rebuild regardless of cache state:
+
+```bash
+npm run build:bundle:force
+npm run build:icons:force
+npm run build:icons:mac:force # requires macOS/iconutil
+```
+
+For a quick unsigned, unpacked macOS application build:
+
+```bash
+npm run pack:mac:unsigned
+```
+
+The existing `dist*` commands retain their packaged distribution behavior.
+
 ## Linux packages
 
 ```bash

@@ -9,6 +9,8 @@ const statusText = $('#status-text');
 const statusEndpoint = $('#status-endpoint');
 const connectBtn = $('#connect-btn');
 const disconnectBtn = $('#disconnect-btn');
+const stopBtn = $('#stop-btn');
+const restartBtn = $('#restart-btn');
 const retryBtn = $('#retry-btn');
 const updateBtn = $('#update-btn');
 const configBtn = $('#config-btn');
@@ -38,6 +40,7 @@ let hosts = [];
 let selectedHostId = null;
 let snapshots = {};
 let busy = false;
+let refreshGeneration = 0;
 // Map<hostId, webview>
 const webviews = new Map();
 
@@ -45,7 +48,10 @@ const webviews = new Map();
 
 function getOrCreateWebview(hostId, endpoint) {
   let wv = webviews.get(hostId);
-  if (wv) return wv;
+  if (wv) {
+    if (wv.getAttribute('src') !== endpoint) wv.setAttribute('src', endpoint);
+    return wv;
+  }
 
   wv = document.createElement('webview');
   wv.id = `webview-${hostId}`;
@@ -73,11 +79,25 @@ function destroyWebview(hostId) {
   }
 }
 
-function showWebview(hostId) {
-  for (const [id, wv] of webviews) {
-    wv.style.display = id === hostId ? '' : 'none';
+function reconcileWebviews() {
+  const validHostIds = new Set(hosts.map(host => host.id));
+  for (const [hostId] of webviews) {
+    const snap = snapshots[hostId];
+    if (!validHostIds.has(hostId) || snap?.state !== 'connected' || !snap.endpoint) destroyWebview(hostId);
   }
-  webviewPlaceholder.hidden = webviews.size > 0;
+  for (const snap of Object.values(snapshots)) {
+    if (snap.state === 'connected' && snap.endpoint) getOrCreateWebview(snap.hostId, snap.endpoint);
+  }
+}
+
+function showWebview(hostId) {
+  let visible = false;
+  for (const [id, wv] of webviews) {
+    const show = id === hostId;
+    wv.style.display = show ? 'flex' : 'none';
+    visible ||= show;
+  }
+  webviewPlaceholder.hidden = visible;
 }
 
 // --- Render ---
@@ -143,6 +163,8 @@ function renderStatus() {
   // Buttons
   connectBtn.hidden = !host || isConnected || isConnecting;
   disconnectBtn.hidden = !isConnected;
+  stopBtn.hidden = !host || host.type !== 'remote' || !snap.remoteDsh?.running;
+  restartBtn.hidden = !host || host.type !== 'remote';
   retryBtn.hidden = snap.state !== 'error';
   updateBtn.hidden = !isConnected || !snap.needsUpdate;
   configBtn.hidden = !host;
@@ -166,22 +188,29 @@ function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').
 
 function selectHost(hostId) {
   selectedHostId = hostId;
+  void api.setActiveHost(hostId).catch(error => console.error('Failed to select active host:', error));
   renderHostList();
   renderStatus();
   showWebview(hostId);
 }
 
 async function refresh() {
+  const generation = ++refreshGeneration;
   try {
     const state = await api.getState();
+    if (generation !== refreshGeneration) return;
     hosts = state.hosts;
-    snapshots = {};
+    const nextSnapshots = { ...snapshots };
     for (const s of state.snapshots) {
-      snapshots[s.hostId] = s;
+      const current = nextSnapshots[s.hostId];
+      if (!current || (s.revision ?? 0) >= (current.revision ?? 0)) nextSnapshots[s.hostId] = s;
     }
+    snapshots = nextSnapshots;
     if (!selectedHostId && hosts.length > 0) {
       selectedHostId = hosts[0].id;
+      void api.setActiveHost(selectedHostId).catch(error => console.error('Failed to select active host:', error));
     }
+    reconcileWebviews();
     renderHostList();
     renderStatus();
     showWebview(selectedHostId);
@@ -211,8 +240,17 @@ connectBtn.addEventListener('click', () => doAction(async () => {
 
 disconnectBtn.addEventListener('click', () => doAction(async () => {
   await api.disconnect(selectedHostId);
-  destroyWebview(selectedHostId);
-  showWebview(selectedHostId);
+  await refresh();
+}));
+
+stopBtn.addEventListener('click', () => doAction(async () => {
+  if (!confirm('确定要停止远程 DSH 吗？SSH 隧道也会断开。')) return;
+  await api.stopRemoteDsh(selectedHostId);
+  await refresh();
+}));
+
+restartBtn.addEventListener('click', () => doAction(async () => {
+  await api.restartRemoteDsh(selectedHostId);
   await refresh();
 }));
 
@@ -387,12 +425,15 @@ addDialog.querySelectorAll('.add-option').forEach(btn => {
 
 // Status push
 api.onStatus((hostId, snapshot) => {
+  const current = snapshots[hostId];
+  if (current && (snapshot.revision ?? 0) < (current.revision ?? 0)) return;
   snapshots[hostId] = snapshot;
-  if (snapshot.state === 'connected' && snapshot.endpoint) {
-    getOrCreateWebview(hostId, snapshot.endpoint);
-  }
+  reconcileWebviews();
   renderHostList();
-  if (hostId === selectedHostId) renderStatus();
+  if (hostId === selectedHostId) {
+    renderStatus();
+    showWebview(selectedHostId);
+  }
 });
 
 api.onRefresh(() => refresh());

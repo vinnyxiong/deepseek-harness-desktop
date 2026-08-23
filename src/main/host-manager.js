@@ -26,6 +26,7 @@ class HostManager extends EventEmitter {
     // Map<hostId, { handle, settings, generation, monitorTimer, remoteDshState }>
     this.connections = new Map();
     this.hosts = [];
+    this.revisions = new Map();
     this.operation = Promise.resolve();
   }
 
@@ -41,10 +42,11 @@ class HostManager extends EventEmitter {
     const conn = this.connections.get(hostId);
     if (!conn) {
       const host = this.getHost(hostId);
-      return { hostId, state: 'idle', mode: host?.type === 'remote' ? 'managedSsh' : 'local', endpoint: null, error: null, remoteDsh: null, progress: null, needsUpdate: false, remoteVersion: null, bundledVersion: null };
+      return { hostId, revision: this.revisions.get(hostId) || 0, state: 'idle', mode: host?.type === 'remote' ? 'managedSsh' : 'local', endpoint: null, error: null, remoteDsh: null, progress: null, needsUpdate: false, remoteVersion: null, bundledVersion: null };
     }
     return {
       hostId,
+      revision: this.revisions.get(hostId) || 0,
       state: conn.state,
       mode: conn.handle?.mode || (conn.settings?.type === 'remote' ? 'managedSsh' : 'local'),
       endpoint: conn.handle?.endpoint || null,
@@ -62,7 +64,41 @@ class HostManager extends EventEmitter {
   }
 
   emitStatus(hostId) {
+    this.revisions.set(hostId, (this.revisions.get(hostId) || 0) + 1);
     this.emit('status', hostId, this.getSnapshot(hostId));
+  }
+
+  async discoverAndAttachRemoteHosts({ concurrency = 2 } = {}) {
+    if (!this.remoteDsh?.discoverRemoteDsh) return [];
+    const attached = [];
+    const hosts = this.hosts.filter(item => item.type === 'remote');
+    let next = 0;
+    const worker = async () => {
+      while (next < hosts.length) {
+        const host = hosts[next++];
+        try {
+          const state = await this.remoteDsh.discoverRemoteDsh(host);
+          if (!state.running || this.connections.has(host.id)) continue;
+          const conn = { state: 'connecting', error: null, progress: { phase: 'ssh-tunnel', message: '正在恢复 SSH 隧道...' }, remoteDshState: state, generation: 0, handle: null, settings: host, monitorTimer: null };
+          this.connections.set(host.id, conn);
+          this.emitStatus(host.id);
+          const handle = await this.startManagedSsh(host, details => this.handleUnexpectedExit(host.id, details), state.port);
+          handle.connectionSettings = host;
+          conn.handle = handle;
+          conn.generation = 1;
+          conn.state = 'connected';
+          conn.progress = { phase: 'connected', message: '已连接' };
+          this.emitStatus(host.id);
+          this.startMonitor(host.id, conn, handle);
+          attached.push(this.getSnapshot(host.id));
+        } catch (error) {
+          this.connections.delete(host.id);
+          console.warn(`Failed to attach discovered remote DSH for ${host.id}:`, publicError(error));
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), hosts.length) }, worker));
+    return attached;
   }
 
   // --- Connect ---
@@ -127,24 +163,31 @@ class HostManager extends EventEmitter {
       handle = await this.startLocal(details => this.handleUnexpectedExit(host.id, details));
     } else if (host.type === 'remote') {
       let dynamicRemotePort = null;
-      if (this.remoteDsh && host.autoStartRemoteDsh !== false) {
-        conn.progress = { phase: 'remote-start', message: '正在启动远程 DSH...' };
-        this.emitStatus(host.id);
-        try {
-          const result = await this.remoteDsh.startRemoteDsh(host, {
-            autoInstall: host.autoInstallRemoteDsh !== false,
-            onProgress: (phase, message) => {
-              conn.progress = { phase, message };
-              this.emitStatus(host.id);
-            },
-          });
-          dynamicRemotePort = result.port;
-          conn.remoteDshState = { running: true, pid: result.pid, port: result.port };
+      if (this.remoteDsh) {
+        const discovered = await this.remoteDsh.discoverRemoteDsh?.(host);
+        if (discovered?.running) {
+          dynamicRemotePort = discovered.port;
+          conn.remoteDshState = discovered;
           this.emitStatus(host.id);
-        } catch (error) {
-          console.error('Failed to auto-start remote DSH:', error.message);
-          conn.remoteDshState = { running: false, pid: null, port: null };
-          throw error;
+        } else if (host.autoStartRemoteDsh !== false) {
+          conn.progress = { phase: 'remote-start', message: '正在启动远程 DSH...' };
+          this.emitStatus(host.id);
+          try {
+            const result = await this.remoteDsh.startRemoteDsh(host, {
+              autoInstall: host.autoInstallRemoteDsh !== false,
+              onProgress: (phase, message) => {
+                conn.progress = { phase, message };
+                this.emitStatus(host.id);
+              },
+            });
+            dynamicRemotePort = result.port;
+            conn.remoteDshState = { running: true, pid: result.pid, port: result.port };
+            this.emitStatus(host.id);
+          } catch (error) {
+            console.error('Failed to auto-start remote DSH:', error.message);
+            conn.remoteDshState = { running: false, pid: null, port: null };
+            throw error;
+          }
         }
       }
       conn.progress = { phase: 'ssh-tunnel', message: '正在建立 SSH 隧道...' };
@@ -170,15 +213,6 @@ class HostManager extends EventEmitter {
       }
     }
 
-    // Auto-stop remote DSH
-    if (this.remoteDsh && conn.settings?.type === 'remote' && conn.settings?.autoStopRemoteDsh !== false && conn.remoteDshState?.pid) {
-      try {
-        await this.remoteDsh.stopRemoteDsh(conn.settings, conn.remoteDshState.pid);
-      } catch (error) {
-        console.error('Failed to auto-stop remote DSH:', error.message);
-      }
-    }
-
     this.connections.delete(hostId);
     this.emitStatus(hostId);
   }
@@ -194,29 +228,24 @@ class HostManager extends EventEmitter {
 
   async restartRemoteDsh(hostId) {
     const conn = this.connections.get(hostId);
-    if (!conn || !conn.settings || conn.settings.type !== 'remote') {
+    const settings = conn?.settings || this.getHost(hostId);
+    if (!settings || settings.type !== 'remote') {
       throw new Error('Remote DSH management is only available for remote hosts');
     }
-    try {
-      await this.remoteDsh.stopRemoteDsh(conn.settings, conn.remoteDshState?.pid);
-    } catch { /* ignore */ }
-    const result = await this.remoteDsh.startRemoteDsh(conn.settings, {
-      autoInstall: conn.settings.autoInstallRemoteDsh !== false,
-    });
-    conn.remoteDshState = { running: true, pid: result.pid, port: result.port };
-    this.emitStatus(hostId);
-    return conn.remoteDshState;
+    await this.disconnect(hostId);
+    await this.remoteDsh.stopRemoteDsh(settings, conn?.remoteDshState?.pid);
+    return this.connect(hostId);
   }
 
   async stopRemoteDsh(hostId) {
     const conn = this.connections.get(hostId);
-    if (!conn || !conn.settings || conn.settings.type !== 'remote') {
+    const settings = conn?.settings || this.getHost(hostId);
+    if (!settings || settings.type !== 'remote') {
       throw new Error('Remote DSH management is only available for remote hosts');
     }
-    await this.remoteDsh.stopRemoteDsh(conn.settings, conn.remoteDshState?.pid);
-    conn.remoteDshState = { running: false, pid: null, port: null };
-    this.emitStatus(hostId);
-    return conn.remoteDshState;
+    await this.disconnect(hostId);
+    await this.remoteDsh.stopRemoteDsh(settings, conn?.remoteDshState?.pid);
+    return this.getSnapshot(hostId);
   }
 
   async getRemoteDshVersion(hostId) {
@@ -273,16 +302,26 @@ class HostManager extends EventEmitter {
     this.emitStatus(hostId);
     try {
       const result = await this.remoteDsh.updateRemoteDsh(conn.settings);
-      // Stop and restart remote DSH with new version
+      this.stopMonitor(hostId);
+      const oldHandle = conn.handle;
+      conn.handle = null;
+      if (oldHandle) await oldHandle.stop();
       if (conn.remoteDshState?.pid) {
         await this.remoteDsh.stopRemoteDsh(conn.settings, conn.remoteDshState.pid);
       }
       const startResult = await this.remoteDsh.startRemoteDsh(conn.settings, {
         autoInstall: false,
       });
+      const newHandle = await this.startManagedSsh(conn.settings, details => this.handleUnexpectedExit(hostId, details), startResult.port);
+      newHandle.connectionSettings = conn.settings;
+      conn.handle = newHandle;
+      conn.generation += 1;
       conn.remoteDshState = { running: true, pid: startResult.pid, port: startResult.port };
+      conn.state = 'connected';
+      conn.error = null;
       conn.progress = { phase: 'connected', message: '已连接' };
       this.emitStatus(hostId);
+      this.startMonitor(hostId, conn, newHandle);
       return result;
     } catch (error) {
       conn.progress = null;

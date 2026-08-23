@@ -6,6 +6,8 @@ const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
 const DSH_REMOTE_BIN = '~/.local/state/dsh/runner/.bin/dsh';
 const DSH_REMOTE_RUNNER_DIR = '~/.local/state/dsh/runner';
 const DSH_REMOTE_VERSION_FILE = '~/.local/state/dsh/runner/.dsh-version';
+const DSH_REMOTE_METADATA_FILE = '~/.local/state/dsh/runner/desktop-managed.env';
+const DSH_REMOTE_LOG_FILE = '~/.local/state/dsh/runner/desktop-managed.log';
 
 const COMMAND_TIMEOUT_MS = 15_000;
 
@@ -109,7 +111,7 @@ function getBundledDshVersion() {
 async function checkRemoteDshInstalled(settings, opts = {}) {
   const version = getBundledDshVersion();
   const command = `test -x ${DSH_REMOTE_BIN} && test -f ${DSH_REMOTE_VERSION_FILE} && grep -qFx '${version}' ${DSH_REMOTE_VERSION_FILE} && echo "installed" || echo "missing"`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 10_000 });
   return stdout.includes('installed');
 }
 
@@ -130,8 +132,23 @@ async function transferRemoteDsh(settings, opts = {}) {
   // Pipe the tar.gz via SSH stdin, extract on remote, then write version file.
   const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR} && rm -rf ${DSH_REMOTE_RUNNER_DIR}/node_modules && tar xzf - -C ${DSH_REMOTE_RUNNER_DIR} && echo '${version}' > ${DSH_REMOTE_VERSION_FILE} && echo "done"`;
   const stdin = fs.createReadStream(bundlePath);
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 600_000, stdin });
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 600_000, stdin });
   return { output: stdout };
+}
+
+async function discoverRemoteDsh(settings, opts = {}) {
+  // Metadata is untrusted data. Parse only the two fixed keys line-by-line;
+  // never source/evaluate the file, and accept digits only.
+  const command = `PID=; PORT=; if test -f ${DSH_REMOTE_METADATA_FILE}; then while IFS= read -r LINE; do case "$LINE" in PID=*) VALUE=\${LINE#PID=}; case "$VALUE" in ''|*[!0-9]*) ;; *) PID=$VALUE ;; esac ;; PORT=*) VALUE=\${LINE#PORT=}; case "$VALUE" in ''|*[!0-9]*) ;; *) PORT=$VALUE ;; esac ;; esac; done < ${DSH_REMOTE_METADATA_FILE}; fi; if test -n "$PID" && test -n "$PORT" && kill -0 "$PID" 2>/dev/null; then echo "PID:$PID PORT:$PORT"; else rm -f ${DSH_REMOTE_METADATA_FILE}; echo "STOPPED"; fi`;
+  try {
+    const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 10_000 });
+    const match = stdout.match(/^PID:(\d+) PORT:(\d+)$/m);
+    return match
+      ? { running: true, pid: Number(match[1]), port: Number(match[2]) }
+      : { running: false, pid: null, port: null };
+  } catch {
+    return { running: false, pid: null, port: null };
+  }
 }
 
 async function startRemoteDsh(settings, opts = {}) {
@@ -149,9 +166,13 @@ async function startRemoteDsh(settings, opts = {}) {
     }
   }
 
-  // Start dsh web --port 0 on the remote machine, capture its PID and port.
-  const command = `nohup ${DSH_REMOTE_BIN} web --port 0 > /tmp/dsh-remote-$$.log 2>&1 & PID=$!; for i in $(seq 1 30); do PORT=$(grep -oP 'http://127\\.0\\.0\\.1:\\K\\d+' /tmp/dsh-remote-$$.log 2>/dev/null); if [ -n "$PORT" ]; then echo "PID:$PID PORT:$PORT"; exit 0; fi; if ! kill -0 $PID 2>/dev/null; then echo "EXITED"; exit 1; fi; sleep 1; done; kill $PID 2>/dev/null; echo "TIMEOUT"; exit 1`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 45_000 });
+  // Reuse a healthy desktop-managed service, otherwise launch one whose
+  // metadata and log survive the SSH session and desktop application.
+  const existing = await discoverRemoteDsh(settings, opts);
+  if (existing.running) return { pid: existing.pid, port: existing.port, discovered: true };
+
+  const command = `mkdir -p ${DSH_REMOTE_RUNNER_DIR}; rm -f ${DSH_REMOTE_METADATA_FILE}; nohup ${DSH_REMOTE_BIN} web --port 0 > ${DSH_REMOTE_LOG_FILE} 2>&1 < /dev/null & PID=$!; for i in $(seq 1 30); do PORT=$(grep -oE 'http://127\\.0\\.0\\.1:[0-9]+' ${DSH_REMOTE_LOG_FILE} 2>/dev/null | tail -n 1 | grep -oE '[0-9]+$'); if [ -n "$PORT" ]; then printf 'PID=%s\\nPORT=%s\\n' "$PID" "$PORT" > ${DSH_REMOTE_METADATA_FILE}; echo "PID:$PID PORT:$PORT"; exit 0; fi; if ! kill -0 "$PID" 2>/dev/null; then echo "EXITED"; exit 1; fi; sleep 1; done; kill "$PID" 2>/dev/null; rm -f ${DSH_REMOTE_METADATA_FILE}; echo "TIMEOUT"; exit 1`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 45_000 });
 
   const pidMatch = stdout.match(/PID:(\d+)/);
   const portMatch = stdout.match(/PORT:(\d+)/);
@@ -160,22 +181,18 @@ async function startRemoteDsh(settings, opts = {}) {
     if (stdout.includes('TIMEOUT')) throw new Error('Remote DSH startup timed out (30s)');
     throw new Error(`Unexpected output from remote DSH start: ${stdout}`);
   }
-  return { pid: Number(pidMatch[1]), port: Number(portMatch[1]) };
+  return { pid: Number(pidMatch[1]), port: Number(portMatch[1]), discovered: false };
 }
 
 async function stopRemoteDsh(settings, pid, opts = {}) {
-  if (!pid) return { status: 'no-pid' };
-  const command = `kill ${pid} 2>/dev/null && echo "stopped" || echo "not-found"`;
-  try {
-    const { stdout } = await runRemoteCommand(settings, command, opts);
-    return { status: stdout.includes('stopped') ? 'stopped' : 'not-found' };
-  } catch {
-    return { status: 'not-found' };
-  }
+  const explicitPid = Number.isSafeInteger(pid) && pid > 0 ? String(pid) : '';
+  const command = `PID=${explicitPid}; if test -z "$PID" && test -f ${DSH_REMOTE_METADATA_FILE}; then while IFS= read -r LINE; do case "$LINE" in PID=*) VALUE=\${LINE#PID=}; case "$VALUE" in ''|*[!0-9]*) ;; *) PID=$VALUE ;; esac ;; esac; done < ${DSH_REMOTE_METADATA_FILE}; fi; if test -z "$PID"; then echo "not-found"; exit 0; fi; if kill "$PID"; then rm -f ${DSH_REMOTE_METADATA_FILE}; echo "stopped"; elif kill -0 "$PID" 2>/dev/null; then echo "stop-failed" >&2; exit 1; else rm -f ${DSH_REMOTE_METADATA_FILE}; echo "not-found"; fi`;
+  const { stdout } = await runRemoteCommand(settings, command, opts);
+  return { status: stdout.trim() === 'stopped' ? 'stopped' : 'not-found' };
 }
 
 async function getRemoteDshStatus(settings, pid, opts = {}) {
-  if (!pid) return { running: false, pid: null };
+  if (!pid) return discoverRemoteDsh(settings, opts);
   const command = `kill -0 ${pid} 2>/dev/null && echo "running" || echo "stopped"`;
   try {
     const { stdout } = await runRemoteCommand(settings, command, opts);
@@ -189,7 +206,7 @@ async function getRemoteDshStatus(settings, pid, opts = {}) {
 async function getRemoteDshVersion(settings, opts = {}) {
   try {
     const command = `${DSH_REMOTE_BIN} --version 2>/dev/null || echo "unknown"`;
-    const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
+    const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 10_000 });
     return { version: stdout.trim() || 'unknown' };
   } catch {
     return { version: 'unknown' };
@@ -197,16 +214,17 @@ async function getRemoteDshVersion(settings, opts = {}) {
 }
 
 async function getRemoteDshLog(settings, pid, opts = {}) {
-  if (!pid) return { output: 'Remote DSH is not running.' };
-  const command = `echo "=== DSH PID: ${pid} ==="; ps -p ${pid} -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; echo ""; echo "=== RECENT LOGS ==="; for f in /tmp/dsh-remote-*.log; do tail -n 50 "$f" 2>/dev/null && break; done || echo "(no log file found)"`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
+  const state = pid ? { running: true, pid } : await discoverRemoteDsh(settings, opts);
+  if (!state.running) return { output: 'Remote DSH is not running.' };
+  const command = `echo "=== DSH PID: ${state.pid} ==="; ps -p ${state.pid} -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null; echo ""; echo "=== RECENT LOGS ==="; tail -n 50 ${DSH_REMOTE_LOG_FILE} 2>/dev/null || echo "(no log file found)"`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 10_000 });
   return { output: stdout };
 }
 
 async function getRemoteDshProcessDetails(settings, pid, opts = {}) {
   if (!pid) return { output: 'Remote DSH is not running.' };
   const command = `echo "PID:${pid}"; ps -p ${pid} -o pid,ppid,pcpu,pmem,etime,rss,args --no-headers 2>/dev/null || echo "Process not found"`;
-  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: 10_000 });
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 10_000 });
   return { output: stdout };
 }
 
@@ -216,4 +234,4 @@ async function updateRemoteDsh(settings, opts = {}) {
   return { output: `Updated to version ${version.version}` };
 }
 
-module.exports = { buildRemoteSshArgs, checkRemoteDshInstalled, getBundledDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, transferRemoteDsh, updateRemoteDsh };
+module.exports = { buildRemoteSshArgs, checkRemoteDshInstalled, discoverRemoteDsh, getBundledDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, transferRemoteDsh, updateRemoteDsh };

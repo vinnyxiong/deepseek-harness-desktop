@@ -16,9 +16,13 @@
   "scripts": {
     "dev": "npm run build:icons && electron .",
     "build:icons": "node scripts/generate-icons.mjs",
+    "build:icons:force": "node scripts/generate-icons.mjs --force",
     "build:icons:mac": "npm run build:icons && node scripts/generate-mac-icon.mjs",
+    "build:icons:mac:force": "npm run build:icons:force && node scripts/generate-mac-icon.mjs --force",
     "build:bundle": "node scripts/build-dsh-bundle.cjs",
+    "build:bundle:force": "node scripts/build-dsh-bundle.cjs --force",
     "pack": "npm run build:icons && npm run build:bundle && electron-builder --dir --publish never",
+    "pack:mac:unsigned": "npm run build:icons:mac && npm run build:bundle && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir --publish never",
     "dist": "npm run build:icons && npm run build:bundle && electron-builder --publish never",
     "dist:mac": "npm run build:icons:mac && npm run build:bundle && electron-builder --mac --publish never",
     "dist:mac:x64": "npm run build:icons:mac && npm run build:bundle && electron-builder --mac --x64 --publish never",

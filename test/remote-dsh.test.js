@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { PassThrough } = require('node:stream');
 const test = require('node:test');
-const { buildRemoteSshArgs, checkRemoteDshInstalled, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, transferRemoteDsh, updateRemoteDsh } = require('../src/main/remote-dsh');
+const { buildRemoteSshArgs, checkRemoteDshInstalled, discoverRemoteDsh, getRemoteDshLog, getRemoteDshProcessDetails, getRemoteDshStatus, getRemoteDshVersion, startRemoteDsh, stopRemoteDsh, transferRemoteDsh, updateRemoteDsh } = require('../src/main/remote-dsh');
 
 const settings = {
   host: '10.37.117.240', username: 'xiongyuanwen', sshPort: 22,
@@ -41,9 +41,39 @@ test('buildRemoteSshArgs includes identity file when set', () => {
 
 // --- startRemoteDsh ---
 
+
+test('discoverRemoteDsh reads persistent managed metadata', async () => {
+  const result = await discoverRemoteDsh(settings, { spawnImpl: () => spawnWithOutput('PID:7777 PORT:45678') });
+  assert.deepEqual(result, { running: true, pid: 7777, port: 45678 });
+});
+
+test('discoverRemoteDsh passively parses metadata without sourcing it', async () => {
+  let command;
+  const result = await discoverRemoteDsh(settings, {
+    spawnImpl: (_ssh, args) => {
+      command = args.at(-1);
+      return spawnWithOutput('STOPPED');
+    },
+  });
+  assert.deepEqual(result, { running: false, pid: null, port: null });
+  assert.ok(command.includes('while IFS= read -r LINE'));
+  assert.ok(command.includes('PID=*'));
+  assert.ok(command.includes('PORT=*'));
+  assert.ok(command.includes('*[!0-9]*'));
+  assert.ok(!command.includes(`. ~/.local/state/dsh/runner/desktop-managed.env`));
+  assert.ok(!command.includes('source '));
+});
+
+test('discoverRemoteDsh rejects output with non-numeric metadata', async () => {
+  const result = await discoverRemoteDsh(settings, { spawnImpl: () => spawnWithOutput('PID:7$(touch /tmp/pwned) PORT:45678') });
+  assert.deepEqual(result, { running: false, pid: null, port: null });
+});
+
+
 test('startRemoteDsh starts a new process with dynamic port', async () => {
   const result = await startRemoteDsh(settings, { spawnImpl: () => spawnWithOutput('PID:9999 PORT:56789') });
-  assert.deepEqual(result, { pid: 9999, port: 56789 });
+  assert.equal(result.pid, 9999);
+  assert.equal(result.port, 56789);
 });
 
 test('startRemoteDsh throws on early exit', async () => {
@@ -76,12 +106,32 @@ test('stopRemoteDsh kills by pid', async () => {
 
 test('stopRemoteDsh handles no-pid', async () => {
   const result = await stopRemoteDsh(settings, null, { spawnImpl: () => spawnWithOutput('stopped') });
-  assert.deepEqual(result, { status: 'no-pid' });
+  assert.deepEqual(result, { status: 'stopped' });
 });
 
 test('stopRemoteDsh handles not-found', async () => {
   const result = await stopRemoteDsh(settings, 9999, { spawnImpl: () => spawnWithOutput('not-found') });
   assert.deepEqual(result, { status: 'not-found' });
+});
+
+test('stopRemoteDsh propagates SSH and remote command failures', async () => {
+  await assert.rejects(
+    () => stopRemoteDsh(settings, 9999, { spawnImpl: () => spawnWithOutput('stop-failed', 1) }),
+    /SSH command exited/,
+  );
+});
+
+test('stopRemoteDsh passively reads numeric PID metadata', async () => {
+  let command;
+  await stopRemoteDsh(settings, null, {
+    spawnImpl: (_ssh, args) => {
+      command = args.at(-1);
+      return spawnWithOutput('not-found');
+    },
+  });
+  assert.ok(command.includes('while IFS= read -r LINE'));
+  assert.ok(command.includes('*[!0-9]*'));
+  assert.ok(!command.includes(`. ~/.local/state/dsh/runner/desktop-managed.env`));
 });
 
 // --- getRemoteDshStatus ---
@@ -93,7 +143,7 @@ test('getRemoteDshStatus returns running state', async () => {
 
 test('getRemoteDshStatus returns stopped state', async () => {
   const result = await getRemoteDshStatus(settings, null, { spawnImpl: () => spawnWithOutput('stopped') });
-  assert.deepEqual(result, { running: false, pid: null });
+  assert.deepEqual(result, { running: false, pid: null, port: null });
 });
 
 test('getRemoteDshStatus returns stopped on SSH error', async () => {
@@ -202,7 +252,8 @@ test('transferRemoteDsh throws when bundle not found', async () => {
 
 test('startRemoteDsh with autoInstall false skips the transfer', async () => {
   const result = await startRemoteDsh(settings, { autoInstall: false, spawnImpl: () => spawnWithOutput('PID:9999 PORT:56789') });
-  assert.deepEqual(result, { pid: 9999, port: 56789 });
+  assert.equal(result.pid, 9999);
+  assert.equal(result.port, 56789);
 });
 
 test('startRemoteDsh with autoInstall true transfers when DSH is missing', async () => {
@@ -232,7 +283,8 @@ test('startRemoteDsh with autoInstall true transfers when DSH is missing', async
     bundlePath: tmpTar,
     bundleVersion: '0.1.0-test',
   });
-  assert.deepEqual(result, { pid: 12345, port: 56789 });
+  assert.equal(result.pid, 12345);
+  assert.equal(result.port, 56789);
   assert.ok(callCount >= 4, `should have at least 4 calls, got ${callCount}`);
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });

@@ -12,6 +12,8 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+html, body { width: 100%; height: 100%; }
+
 body {
   margin: 0; padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -20,7 +22,7 @@ body {
   overflow: hidden; height: 100vh;
 }
 
-#app { display: flex; height: 100vh; }
+#app { display: flex; height: 100%; min-height: 0; }
 
 /* Sidebar */
 #sidebar {
@@ -137,7 +139,7 @@ button.small { min-height: 24px; padding: 2px 8px; font-size: 11px; }
 /* Main area */
 #main {
   flex: 1; display: flex; flex-direction: column;
-  min-width: 0; overflow: hidden;
+  min-width: 0; min-height: 0; overflow: hidden;
 }
 
 /* Status bar */
@@ -172,11 +174,11 @@ button.small { min-height: 24px; padding: 2px 8px; font-size: 11px; }
 
 /* Webview container */
 #webview-container {
-  flex: 1; display: flex; flex-direction: column;
-  position: relative; background: var(--page);
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  position: relative; background: var(--page); overflow: hidden;
 }
 #webview-container webview {
-  flex: 1; min-height: 0; border: none;
+  flex: 1 1 auto; width: 100%; height: 100%; min-width: 0; min-height: 0; border: none;
 }
 
 .webview-placeholder {

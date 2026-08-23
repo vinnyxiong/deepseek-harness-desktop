@@ -8,8 +8,8 @@ function createWindowManager() {
   const hostManagerPath = path.join(__dirname, '..', 'renderer', 'host-manager', 'index.html');
   const hostManagerUrl = pathToFileURL(hostManagerPath).href;
 
-  function createSafeWindow({ title, width, height, preload, file, onClosed, refreshChannel, webviewTag = false }) {
-    const window = new BrowserWindow({ title, width, height, minWidth: 480, minHeight: 480, show: false, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true, webviewTag } });
+  function createSafeWindow({ title, width, height, minWidth = 480, minHeight = 480, preload, file, onClosed, refreshChannel, webviewTag = false }) {
+    const window = new BrowserWindow({ title, width, height, minWidth, minHeight, show: false, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true, webviewTag } });
     window.removeMenu?.(); window.once('ready-to-show', () => window.show()); window.on('closed', onClosed);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); window.webContents.on('will-navigate', event => event.preventDefault());
     if (refreshChannel) window.webContents.on('did-finish-load', () => window.webContents.send(refreshChannel));

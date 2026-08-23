@@ -4,5 +4,6 @@ build/
 release/
 dsh-bundle.tar.gz
 dsh-bundle.version
+.dsh-bundle.cache.json
 *.log
 .DS_Store
