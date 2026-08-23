@@ -46,7 +46,8 @@ export async function generateMacIcon({ projectDir = join(scriptDir, '..'), forc
   }
 
   const iconsetDir = join(buildDir, `.icon.iconset.tmp-${process.pid}-${crypto.randomUUID()}`);
-  const tempOutput = `${outputPath}.tmp-${process.pid}-${crypto.randomUUID()}`;
+  // iconutil requires the output path itself to end in .icns.
+  const tempOutput = join(buildDir, `.icon.tmp-${process.pid}-${crypto.randomUUID()}.icns`);
   await mkdir(iconsetDir, { recursive: true });
   try {
     for (const [size, name] of ICONSET_FILES) await copyFile(join(buildDir, `icon-${size}.png`), join(iconsetDir, name));
