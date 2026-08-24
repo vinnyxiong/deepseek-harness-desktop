@@ -1,4 +1,4 @@
-const { app, Menu, dialog } = require('electron');
+const { app, Menu, dialog, ipcMain } = require('electron');
 const path = require('path');
 const { CompletionWatcher } = require('./main/completion-watcher');
 const { ConnectionActions } = require('./main/connection-actions');
@@ -22,7 +22,7 @@ function buildMenu() {
   const t = key => translate(localeService?.getLocale() ?? 'zh', key); const template = [];
   if (process.platform === 'darwin') template.push({ label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'services' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }] });
   if (process.platform !== 'darwin') { /* no Settings menu on other platforms */ }
-  template.push({ label: t('menu.edit'), submenu: [{ role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] }, { label: t('menu.view'), submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { role: 'togglefullscreen' }, { type: 'separator' }, { label: t('menu.toggleSidebar'), accelerator: 'CommandOrControl+B', click: () => windows.toggleSidebar() }] }, { label: t('menu.window'), submenu: [{ role: 'minimize' }, { role: 'front' }] });
+  template.push({ label: t('menu.edit'), submenu: [{ role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] }, { label: t('menu.view'), submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { role: 'togglefullscreen' }] }, { label: t('menu.window'), submenu: [{ role: 'minimize' }, { role: 'front' }] });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -90,6 +90,7 @@ async function initialize() {
 
   buildMenu();
   windows.showHostManager();
+  windows.registerIpc(ipcMain);
 
   const localHost = settings.hosts.find(host => host.type === 'local');
   if (localHost) {

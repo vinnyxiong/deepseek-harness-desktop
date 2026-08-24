@@ -2,13 +2,17 @@ const api = window.desktopHosts;
 const $ = s => document.querySelector(s);
 
 // Elements
-const sidebar = $('#sidebar');
-const dragHandle = $('#drag-handle');
-const hostList = $('#host-list');
+const tabBar = $('#tab-bar');
+const tabList = $('#tab-list');
 const progressBar = $('#progress-bar');
 const progressBarText = $('#progress-bar-text');
 const webviewContainer = $('#webview-container');
 const webviewPlaceholder = $('#webview-placeholder');
+const placeholderTitle = $('#placeholder-title');
+const placeholderDesc = $('#placeholder-desc');
+const placeholderError = $('#placeholder-error');
+const placeholderErrorText = $('#placeholder-error-text');
+const placeholderRetryBtn = $('#placeholder-retry-btn');
 const addDialog = $('#add-dialog');
 const configDialog = $('#config-dialog');
 
@@ -34,6 +38,298 @@ let busy = false;
 let refreshGeneration = 0;
 // Map<hostId, webview>
 const webviews = new Map();
+
+// --- Platform setup ---
+
+document.body.setAttribute('data-platform', api.platform);
+
+// --- Window controls (Windows/Linux) ---
+
+if (api.platform !== 'darwin') {
+  const winControls = $('#window-controls');
+  winControls.hidden = false;
+
+  $('#minimize-btn').addEventListener('click', () => api.windowMinimize());
+  $('#maximize-btn').addEventListener('click', () => api.windowMaximize());
+  $('#close-btn').addEventListener('click', () => api.windowClose());
+
+  api.onWindowState(state => {
+    const btn = $('#maximize-btn');
+    if (state.maximized) {
+      btn.innerHTML = '&#x2752;'; // restore icon
+      btn.title = '还原';
+    } else {
+      btn.innerHTML = '&#x25A1;'; // maximize icon
+      btn.title = '最大化';
+    }
+  });
+
+  // Double-click tab bar to maximize/restore (Windows/Linux)
+  tabBar.addEventListener('dblclick', e => {
+    if (e.target === tabBar) api.windowMaximize();
+  });
+}
+
+// --- Webview management ---
+
+function getOrCreateWebview(hostId, endpoint) {
+  let wv = webviews.get(hostId);
+  if (wv) {
+    if (wv.getAttribute('src') !== endpoint) {
+      console.log(`[webview] ${hostId}: switching src to ${endpoint}`);
+      wv.setAttribute('src', endpoint);
+    }
+    return wv;
+  }
+
+  console.log(`[webview] ${hostId}: creating webview for ${endpoint}`);
+  wv = document.createElement('webview');
+  wv.id = `webview-${hostId}`;
+  wv.setAttribute('src', endpoint);
+  wv.setAttribute('allowpopups', '');
+  wv.setAttribute('partition', `persist:dsh-${hostId}`);
+  wv.style.cssText = 'display:none;';
+
+  wv.addEventListener('did-start-loading', () => console.log(`[webview] ${hostId}: started loading`));
+  wv.addEventListener('did-stop-loading', () => console.log(`[webview] ${hostId}: stopped loading`));
+  wv.addEventListener('did-navigate', (e) => console.log(`[webview] ${hostId}: navigated to ${e.url}`));
+  wv.addEventListener('did-navigate-in-page', (e) => console.log(`[webview] ${hostId}: in-page nav to ${e.url}`));
+  wv.addEventListener('did-fail-load', (e) => console.error(`[webview] ${hostId}: FAILED ${e.errorCode} ${e.errorDescription} for ${e.validatedURL}`));
+  wv.addEventListener('console-message', (e) => console.log(`[webview] ${hostId}: console[${e.level}] ${e.message}`));
+  wv.addEventListener('page-title-updated', (e) => console.log(`[webview] ${hostId}: title = ${e.title}`));
+
+  wv.addEventListener('dom-ready', () => {
+    console.log(`[webview] ${hostId}: dom-ready`);
+    wv.insertCSS('html,body,#root{height:100%;margin:0;padding:0}');
+  });
+
+  webviewContainer.appendChild(wv);
+  webviews.set(hostId, wv);
+  return wv;
+}
+
+function destroyWebview(hostId) {
+  const wv = webviews.get(hostId);
+  if (wv) {
+    wv.remove();
+    webviews.delete(hostId);
+  }
+}
+
+function reconcileWebviews() {
+  const validHostIds = new Set(hosts.map(host => host.id));
+  for (const [hostId] of webviews) {
+    const snap = snapshots[hostId];
+    if (!validHostIds.has(hostId) || snap?.state !== 'connected' || !snap.endpoint) destroyWebview(hostId);
+  }
+  for (const snap of Object.values(snapshots)) {
+    if (snap.state === 'connected' && snap.endpoint) getOrCreateWebview(snap.hostId, snap.endpoint);
+  }
+}
+
+function showWebview(hostId) {
+  let visible = false;
+  for (const [id, wv] of webviews) {
+    const show = id === hostId;
+    wv.style.display = show ? 'flex' : 'none';
+    visible ||= show;
+  }
+
+  if (visible) {
+    webviewPlaceholder.hidden = true;
+    return;
+  }
+
+  // No webview visible — show placeholder
+  webviewPlaceholder.hidden = false;
+  placeholderError.hidden = true;
+
+  // Remove any existing connect button
+  const existingBtn = webviewPlaceholder.querySelector('.placeholder-connect-btn');
+  if (existingBtn) existingBtn.remove();
+
+  const host = hosts.find(h => h.id === hostId);
+  const snap = host ? (snapshots[hostId] || { state: 'idle' }) : null;
+
+  if (!hostId || !host) {
+    placeholderTitle.textContent = '选择一个 Host';
+    placeholderDesc.textContent = '点击上方标签页选择 Host 并连接';
+  } else if (snap.state === 'error') {
+    placeholderTitle.textContent = host.name;
+    placeholderDesc.textContent = '连接失败';
+    placeholderError.hidden = false;
+    placeholderErrorText.textContent = snap.error || '未知错误';
+    placeholderRetryBtn.onclick = () => doAction(async () => {
+      const newSnap = await api.connect(hostId);
+      if (newSnap.state === 'connected' && newSnap.endpoint) {
+        getOrCreateWebview(hostId, newSnap.endpoint);
+        showWebview(hostId);
+      }
+      await refresh();
+    });
+  } else if (snap.state === 'connecting') {
+    placeholderTitle.textContent = host.name;
+    placeholderDesc.textContent = snap.progress?.message || '连接中...';
+  } else {
+    placeholderTitle.textContent = host.name;
+    placeholderDesc.textContent = '点击连接按钮开始连接';
+    // Add a connect button
+    const btn = document.createElement('button');
+    btn.className = 'placeholder-connect-btn primary';
+    btn.textContent = '连接';
+    btn.addEventListener('click', () => doAction(async () => {
+      const newSnap = await api.connect(hostId);
+      if (newSnap.state === 'connected' && newSnap.endpoint) {
+        getOrCreateWebview(hostId, newSnap.endpoint);
+        showWebview(hostId);
+      }
+      await refresh();
+    }));
+    webviewPlaceholder.appendChild(btn);
+  }
+}
+
+// --- Render Tab Bar ---
+
+function renderTabBar() {
+  tabList.innerHTML = '';
+  for (const host of hosts) {
+    const snap = snapshots[host.id] || { state: 'idle' };
+    const tab = document.createElement('div');
+    tab.className = `tab${selectedHostId === host.id ? ' active' : ''}`;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-selected', String(selectedHostId === host.id));
+    tab.dataset.hostId = host.id;
+
+    // Error tooltip
+    if (snap.state === 'error' && snap.error) {
+      tab.setAttribute('data-tooltip', snap.error);
+    }
+
+    const isRemote = host.type === 'remote';
+    const needsUpdate = snap.needsUpdate && snap.state === 'connected';
+    const isTransferring = snap.progress?.phase === 'remote-transferring';
+
+    const icon = esc(host.icon || '🖥️');
+    const name = esc(host.name);
+    const statusCls = snap.state === 'connecting' && !isTransferring ? 'connecting' : snap.state;
+
+    tab.innerHTML = `
+      <span class="tab-icon">${icon}</span>
+      <span class="tab-label">${name}</span>
+      ${needsUpdate ? '<span class="tab-badge" title="远程 DSH 版本过旧"></span>' : ''}
+      ${isTransferring ? '<span class="tab-spinner" title="正在传输..."></span>' : ''}
+      <span class="tab-status-dot ${statusCls}"></span>
+      ${isRemote ? '<span class="tab-close" title="删除 Host">&times;</span>' : ''}
+    `;
+
+    // Click tab to select
+    tab.addEventListener('click', e => {
+      if (e.target.closest('.tab-close')) return;
+      selectHost(host.id);
+    });
+
+    // Close button (remote hosts only)
+    const closeBtn = tab.querySelector('.tab-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        deleteHost(host.id);
+      });
+    }
+
+    // Context menu
+    tab.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      showContextMenu(host.id, e.clientX, e.clientY);
+    });
+
+    tabList.appendChild(tab);
+  }
+}
+
+function renderProgress() {
+  const host = hosts.find(h => h.id === selectedHostId);
+  const snap = host ? (snapshots[host.id] || { state: 'idle' }) : { state: 'idle' };
+  const isTransferring = snap.progress?.phase === 'remote-transferring';
+
+  if (isTransferring) {
+    progressBar.hidden = false;
+    progressBarText.textContent = snap.progress?.message || '正在传输 DSH...';
+  } else {
+    progressBar.hidden = true;
+  }
+}
+
+function stateLabel(snap) {
+  if (snap.progress?.message) return snap.progress.message;
+  const labels = { idle: '未连接', connecting: '连接中...', connected: '已连接', error: '错误' };
+  return labels[snap.state] || snap.state;
+}
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+// --- Actions ---
+
+function selectHost(hostId) {
+  selectedHostId = hostId;
+  void api.setActiveHost(hostId).catch(error => console.error('Failed to select active host:', error));
+  renderTabBar();
+  renderProgress();
+  showWebview(hostId);
+}
+
+async function deleteHost(hostId) {
+  const host = hosts.find(h => h.id === hostId);
+  if (!host) return;
+  if (host.type === 'local') return;
+  if (!confirm(`确定要删除 ${host.name} 吗？`)) return;
+  await doAction(async () => {
+    await api.deleteHost(hostId);
+    destroyWebview(hostId);
+    hosts = hosts.filter(h => h.id !== hostId);
+    if (selectedHostId === hostId) {
+      selectedHostId = hosts.length > 0 ? hosts[0].id : null;
+      if (selectedHostId) void api.setActiveHost(selectedHostId).catch(() => {});
+    }
+    renderTabBar();
+    renderProgress();
+    showWebview(selectedHostId);
+  });
+}
+
+async function refresh() {
+  const generation = ++refreshGeneration;
+  try {
+    const state = await api.getState();
+    if (generation !== refreshGeneration) return;
+    hosts = state.hosts;
+    const nextSnapshots = { ...snapshots };
+    for (const s of state.snapshots) {
+      const current = nextSnapshots[s.hostId];
+      if (!current || (s.revision ?? 0) >= (current.revision ?? 0)) nextSnapshots[s.hostId] = s;
+    }
+    snapshots = nextSnapshots;
+    if (!selectedHostId && hosts.length > 0) {
+      selectedHostId = hosts[0].id;
+      void api.setActiveHost(selectedHostId).catch(error => console.error('Failed to select active host:', error));
+    }
+    reconcileWebviews();
+    renderTabBar();
+    renderProgress();
+    showWebview(selectedHostId);
+  } catch (error) {
+    console.error('Failed to refresh:', error);
+  }
+}
+
+async function doAction(action) {
+  if (busy) return;
+  busy = true;
+  try { await action(); } catch (error) {
+    console.error(error);
+  } finally { busy = false; }
+}
 
 // --- Context menu ---
 
@@ -126,7 +422,7 @@ function showContextMenu(hostId, x, y) {
       destroyWebview(hostId);
       hosts = hosts.filter(h => h.id !== hostId);
       if (selectedHostId === hostId) selectedHostId = null;
-      renderHostList();
+      renderTabBar();
       renderProgress();
       showWebview(null);
     }) });
@@ -168,166 +464,9 @@ document.addEventListener('click', e => {
   if (contextMenu && !contextMenu.contains(e.target)) hideContextMenu();
 });
 
-// --- Webview management ---
-
-function getOrCreateWebview(hostId, endpoint) {
-  let wv = webviews.get(hostId);
-  if (wv) {
-    if (wv.getAttribute('src') !== endpoint) {
-      console.log(`[webview] ${hostId}: switching src to ${endpoint}`);
-      wv.setAttribute('src', endpoint);
-    }
-    return wv;
-  }
-
-  console.log(`[webview] ${hostId}: creating webview for ${endpoint}`);
-  wv = document.createElement('webview');
-  wv.id = `webview-${hostId}`;
-  wv.setAttribute('src', endpoint);
-  wv.setAttribute('allowpopups', '');
-  wv.setAttribute('partition', `persist:dsh-${hostId}`);
-  wv.style.cssText = 'display:none;';
-
-  wv.addEventListener('did-start-loading', () => console.log(`[webview] ${hostId}: started loading`));
-  wv.addEventListener('did-stop-loading', () => console.log(`[webview] ${hostId}: stopped loading`));
-  wv.addEventListener('did-navigate', (e) => console.log(`[webview] ${hostId}: navigated to ${e.url}`));
-  wv.addEventListener('did-navigate-in-page', (e) => console.log(`[webview] ${hostId}: in-page nav to ${e.url}`));
-  wv.addEventListener('did-fail-load', (e) => console.error(`[webview] ${hostId}: FAILED ${e.errorCode} ${e.errorDescription} for ${e.validatedURL}`));
-  wv.addEventListener('console-message', (e) => console.log(`[webview] ${hostId}: console[${e.level}] ${e.message}`));
-  wv.addEventListener('page-title-updated', (e) => console.log(`[webview] ${hostId}: title = ${e.title}`));
-
-  wv.addEventListener('dom-ready', () => {
-    console.log(`[webview] ${hostId}: dom-ready`);
-    wv.insertCSS('html,body,#root{height:100%;margin:0;padding:0}');
-  });
-
-  webviewContainer.appendChild(wv);
-  webviews.set(hostId, wv);
-  return wv;
-}
-
-function destroyWebview(hostId) {
-  const wv = webviews.get(hostId);
-  if (wv) {
-    wv.remove();
-    webviews.delete(hostId);
-  }
-}
-
-function reconcileWebviews() {
-  const validHostIds = new Set(hosts.map(host => host.id));
-  for (const [hostId] of webviews) {
-    const snap = snapshots[hostId];
-    if (!validHostIds.has(hostId) || snap?.state !== 'connected' || !snap.endpoint) destroyWebview(hostId);
-  }
-  for (const snap of Object.values(snapshots)) {
-    if (snap.state === 'connected' && snap.endpoint) getOrCreateWebview(snap.hostId, snap.endpoint);
-  }
-}
-
-function showWebview(hostId) {
-  let visible = false;
-  for (const [id, wv] of webviews) {
-    const show = id === hostId;
-    wv.style.display = show ? 'flex' : 'none';
-    visible ||= show;
-  }
-  webviewPlaceholder.hidden = visible;
-}
-
-// --- Render ---
-
-function renderHostList() {
-  hostList.innerHTML = '';
-  for (const host of hosts) {
-    const snap = snapshots[host.id] || { state: 'idle' };
-    const li = document.createElement('li');
-    li.className = `host-item${selectedHostId === host.id ? ' active' : ''}`;
-    li.setAttribute('role', 'option');
-    li.setAttribute('aria-selected', String(selectedHostId === host.id));
-    li.innerHTML = `
-      <span class="host-item-emoji">${esc(host.icon || '🖥️')}</span>
-      <span class="host-item-name">${esc(host.name)}</span>
-      <span class="host-item-dot ${snap.state}"></span>
-      <span class="host-item-tooltip">${esc(host.name)} · ${stateLabel(snap)}</span>
-    `;
-    li.addEventListener('click', () => selectHost(host.id));
-    li.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      showContextMenu(host.id, e.clientX, e.clientY);
-    });
-    hostList.appendChild(li);
-  }
-}
-
-function renderProgress() {
-  const host = hosts.find(h => h.id === selectedHostId);
-  const snap = host ? (snapshots[host.id] || { state: 'idle' }) : { state: 'idle' };
-  const isTransferring = snap.progress?.phase === 'remote-transferring';
-
-  if (isTransferring) {
-    progressBar.hidden = false;
-    progressBarText.textContent = snap.progress?.message || '正在传输 DSH...';
-  } else {
-    progressBar.hidden = true;
-  }
-}
-
-function stateLabel(snap) {
-  if (snap.progress?.message) return snap.progress.message;
-  const labels = { idle: '未连接', connecting: '连接中...', connected: '已连接', error: '错误' };
-  return labels[snap.state] || snap.state;
-}
-
-function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-
-// --- Actions ---
-
-function selectHost(hostId) {
-  selectedHostId = hostId;
-  void api.setActiveHost(hostId).catch(error => console.error('Failed to select active host:', error));
-  renderHostList();
-  renderProgress();
-  showWebview(hostId);
-}
-
-async function refresh() {
-  const generation = ++refreshGeneration;
-  try {
-    const state = await api.getState();
-    if (generation !== refreshGeneration) return;
-    hosts = state.hosts;
-    const nextSnapshots = { ...snapshots };
-    for (const s of state.snapshots) {
-      const current = nextSnapshots[s.hostId];
-      if (!current || (s.revision ?? 0) >= (current.revision ?? 0)) nextSnapshots[s.hostId] = s;
-    }
-    snapshots = nextSnapshots;
-    if (!selectedHostId && hosts.length > 0) {
-      selectedHostId = hosts[0].id;
-      void api.setActiveHost(selectedHostId).catch(error => console.error('Failed to select active host:', error));
-    }
-    reconcileWebviews();
-    renderHostList();
-    renderProgress();
-    showWebview(selectedHostId);
-  } catch (error) {
-    console.error('Failed to refresh:', error);
-  }
-}
-
-async function doAction(action) {
-  if (busy) return;
-  busy = true;
-  try { await action(); } catch (error) {
-    console.error(error);
-  } finally { busy = false; }
-}
-
 // --- Config dialog ---
 
 function openConfigDialog(hostId) {
-  // Ensure the correct host is selected for save to work
   selectedHostId = hostId;
   const host = hosts.find(h => h.id === hostId);
   if (!host) return;
@@ -337,7 +476,6 @@ function openConfigDialog(hostId) {
   cfgSsh.hidden = !isRemote;
   cfgSshPolicy.hidden = !isRemote;
   cfgStartup.hidden = !isRemote;
-  $('#delete-config-btn').hidden = !isRemote;
   if (isRemote) {
     cfgHost.value = host.host || '';
     cfgUsername.value = host.username || '';
@@ -367,26 +505,10 @@ $('#save-config-btn').addEventListener('click', () => doAction(async () => {
     updated.autoInstallRemoteDsh = cfgAutoInstall.checked;
   }
   await api.updateHost(updated);
-  // Update local state directly instead of full refresh
   Object.assign(host, updated);
   configDialog.close();
-  renderHostList();
+  renderTabBar();
   renderProgress();
-}));
-
-$('#delete-config-btn').addEventListener('click', () => doAction(async () => {
-  const host = hosts.find(h => h.id === selectedHostId);
-  if (!host) return;
-  if (host.type === 'local') return;
-  if (!confirm('确定要删除这个 Host 吗？')) return;
-  await api.deleteHost(selectedHostId);
-  destroyWebview(selectedHostId);
-  hosts = hosts.filter(h => h.id !== selectedHostId);
-  selectedHostId = null;
-  configDialog.close();
-  renderHostList();
-  renderProgress();
-  showWebview(null);
 }));
 
 $('#cancel-config-btn').addEventListener('click', () => configDialog.close());
@@ -424,7 +546,7 @@ $('#cfg-icon-btn').addEventListener('click', () => {
 });
 
 // Add host dialog
-$('#add-host-btn').addEventListener('click', () => addDialog.showModal());
+$('#add-tab-btn').addEventListener('click', () => addDialog.showModal());
 $('#cancel-add-btn').addEventListener('click', () => addDialog.close());
 
 addDialog.querySelectorAll('.add-option').forEach(btn => {
@@ -440,13 +562,36 @@ addDialog.querySelectorAll('.add-option').forEach(btn => {
   }));
 });
 
-// Status push
+// --- Keyboard shortcuts ---
+
+document.addEventListener('keydown', e => {
+  // Ctrl+1~9: switch to tab by index
+  if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    const num = parseInt(e.key);
+    if (num >= 1 && num <= 9 && hosts[num - 1]) {
+      e.preventDefault();
+      selectHost(hosts[num - 1].id);
+    }
+  }
+  // Ctrl+Tab / Ctrl+Shift+Tab: cycle tabs
+  if (e.ctrlKey && e.key === 'Tab' && hosts.length > 0) {
+    e.preventDefault();
+    const idx = hosts.findIndex(h => h.id === selectedHostId);
+    const next = e.shiftKey
+      ? (idx <= 0 ? hosts.length - 1 : idx - 1)
+      : (idx >= hosts.length - 1 ? 0 : idx + 1);
+    selectHost(hosts[next].id);
+  }
+});
+
+// --- Status push ---
+
 api.onStatus((hostId, snapshot) => {
   const current = snapshots[hostId];
   if (current && (snapshot.revision ?? 0) < (current.revision ?? 0)) return;
   snapshots[hostId] = snapshot;
   reconcileWebviews();
-  renderHostList();
+  renderTabBar();
   if (hostId === selectedHostId) {
     renderProgress();
     showWebview(selectedHostId);
@@ -455,69 +600,6 @@ api.onStatus((hostId, snapshot) => {
 
 api.onRefresh(() => refresh());
 
-// Init
+// --- Init ---
+
 refresh();
-
-// --- Sidebar drag + collapse ---
-
-let sidebarWidth = 240;
-const SIDEBAR_MIN = 44, SIDEBAR_MAX = 400;
-
-function setSidebarWidth(w) {
-  sidebarWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, w));
-  if (sidebarWidth <= SIDEBAR_MIN + 10) {
-    sidebar.classList.add('collapsed');
-    sidebar.classList.remove('hidden');
-    sidebarWidth = SIDEBAR_MIN;
-  } else {
-    sidebar.classList.remove('collapsed', 'hidden');
-  }
-  sidebar.style.setProperty('--sidebar-width', `${sidebarWidth}px`);
-}
-
-dragHandle.addEventListener('dblclick', () => {
-  if (sidebar.classList.contains('collapsed') || sidebar.classList.contains('hidden')) {
-    setSidebarWidth(240);
-  } else {
-    setSidebarWidth(SIDEBAR_MIN);
-  }
-});
-
-let dragging = false;
-let dragStartCollapsed = false;
-dragHandle.addEventListener('mousedown', e => {
-  dragging = true;
-  dragStartCollapsed = sidebar.classList.contains('collapsed');
-  sidebar.classList.add('dragging');
-  dragHandle.classList.add('active');
-  e.preventDefault();
-});
-
-document.addEventListener('mousemove', e => {
-  if (!dragging) return;
-  const rect = dragHandle.parentElement.getBoundingClientRect();
-  let w = e.clientX - rect.left;
-  if (dragStartCollapsed && w > SIDEBAR_MIN + 10) {
-    // Immediately jump out of collapsed state
-    dragStartCollapsed = false;
-    setSidebarWidth(w);
-  } else {
-    setSidebarWidth(w);
-  }
-});
-
-document.addEventListener('mouseup', () => {
-  if (!dragging) return;
-  dragging = false;
-  dragStartCollapsed = false;
-  sidebar.classList.remove('dragging');
-  dragHandle.classList.remove('active');
-});
-
-api.onToggleSidebar(() => {
-  if (sidebar.classList.contains('hidden')) {
-    setSidebarWidth(240);
-  } else {
-    sidebar.classList.add('hidden');
-  }
-});

@@ -9,17 +9,17 @@
 </head>
 <body>
   <div id="app">
-    <!-- Sidebar -->
-    <aside id="sidebar">
-      <div class="sidebar-header">
-        <h2>Hosts</h2>
-        <button id="add-host-btn" class="icon-btn" title="添加 Host">+</button>
+    <!-- Tab Bar (also serves as title bar drag region) -->
+    <nav id="tab-bar" class="tab-bar">
+      <div id="tab-list" class="tab-list" role="tablist"></div>
+      <button id="add-tab-btn" class="tab-add-btn" title="添加 Host">+</button>
+      <!-- Windows/Linux: custom window controls -->
+      <div id="window-controls" class="window-controls" hidden>
+        <button id="minimize-btn" class="window-btn" title="最小化">&#x2014;</button>
+        <button id="maximize-btn" class="window-btn" title="最大化">&#x25A1;</button>
+        <button id="close-btn" class="window-btn window-btn-close" title="关闭">&#x2715;</button>
       </div>
-      <ul id="host-list" class="host-list" role="listbox"></ul>
-    </aside>
-
-    <!-- Drag handle -->
-    <div id="drag-handle" aria-hidden="true"></div>
+    </nav>
 
     <!-- Main area -->
     <main id="main">
@@ -35,8 +35,12 @@
       <div id="webview-container">
         <div id="webview-placeholder" class="webview-placeholder">
           <div class="empty-icon" aria-hidden="true">DSH</div>
-          <h3>选择一个 Host</h3>
-          <p>从左侧列表选择一个 Host 并连接</p>
+          <h3 id="placeholder-title">选择一个 Host</h3>
+          <p id="placeholder-desc">点击上方标签页选择 Host 并连接</p>
+          <div id="placeholder-error" class="placeholder-error" hidden>
+            <p id="placeholder-error-text"></p>
+            <button id="placeholder-retry-btn" class="primary">重试</button>
+          </div>
         </div>
       </div>
     </main>
@@ -68,7 +72,6 @@
       </div>
       <div class="dialog-actions">
         <button id="save-config-btn" class="primary">保存</button>
-        <button id="delete-config-btn" class="danger">删除 Host</button>
         <button id="cancel-config-btn">取消</button>
       </div>
     </div>
@@ -80,11 +83,11 @@
       <h3>添加 Host</h3>
       <div class="dialog-options">
         <button class="add-option" data-type="local">
-          <span class="add-option-icon local-icon" aria-hidden="true"></span>
+          <span class="add-option-icon" aria-hidden="true">🖥️</span>
           <span><strong>本机</strong><small>在本地启动 DSH</small></span>
         </button>
         <button class="add-option" data-type="remote">
-          <span class="add-option-icon remote-icon" aria-hidden="true"></span>
+          <span class="add-option-icon" aria-hidden="true">🌐</span>
           <span><strong>远程服务器</strong><small>通过 SSH 连接远程 DSH</small></span>
         </button>
       </div>
