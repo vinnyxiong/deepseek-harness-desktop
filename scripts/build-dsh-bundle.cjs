@@ -31,7 +31,7 @@ const METADATA_NAME = '.dsh-bundle.cache.json';
 // AppleDouble / resource-fork files (._*) and .DS_Store are produced by macOS
 // tar/zip operations and must never leak into the bundle.
 const EXCLUDE = new Set([
-  'electron', 'electron-builder', 'electron-updater', 'sharp', 'png-to-ico',
+  'electron', 'electron-builder', 'electron-updater', 'png-to-ico',
   '.cache', '.package-lock.json',
 ]);
 
