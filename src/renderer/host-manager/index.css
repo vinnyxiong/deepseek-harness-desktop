@@ -80,9 +80,9 @@ body[data-platform="linux"] .tab-bar {
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition: background .12s, border-color .12s;
-  max-width: 200px;
-  min-width: 0;
-  flex-shrink: 1;
+  flex: 1 1 0;
+  max-width: 240px;
+  min-width: 72px;
   position: relative;
 }
 
