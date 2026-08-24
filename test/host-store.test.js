@@ -67,11 +67,11 @@ test('rejects duplicate host ids', () => {
   }), /Duplicate host id/);
 });
 
-test('rejects settings with no local host', () => {
+test('rejects settings with empty hosts', () => {
   assert.throws(() => validateSettings({
     schemaVersion: 3,
-    hosts: [{ id: 'r1', name: 'Dev', type: 'remote', host: '10.0.0.1', username: 'root', sshPort: 22, localPort: 3080, hostKeyPolicy: 'accept-new' }],
-  }), /At least one local host/);
+    hosts: [],
+  }), /hosts must not be empty/);
 });
 
 test('migrates v2 local mode to v3', () => {

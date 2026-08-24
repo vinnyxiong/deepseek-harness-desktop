@@ -321,19 +321,6 @@ dialog {
 dialog::backdrop { background: rgba(0,0,0,.3); }
 .dialog-content { padding: 24px; }
 .dialog-content h3 { margin: 0 0 18px; font-size: 16px; color: var(--text); }
-.dialog-options { display: flex; gap: 12px; margin-bottom: 20px; }
-.add-option {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 20px 14px; border: 1px solid var(--line); border-radius: var(--radius-md);
-  background: var(--surface); cursor: pointer; text-align: center;
-  transition: all .15s; min-width: 0;
-}
-.add-option:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.06); }
-.add-option-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
-.add-option[data-type="local"] .add-option-icon { background: #eaf6ff; }
-.add-option[data-type="remote"] .add-option-icon { background: #eeedff; }
-.add-option strong { display: block; font-size: 13px; margin-bottom: 2px; }
-.add-option small { display: block; font-size: 11px; color: var(--text-muted); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 /* Config form fields */
@@ -420,8 +407,6 @@ button.small { min-height: 24px; padding: 2px 8px; font-size: 11px; }
   }
   input, select { background: #1b1e2c; color: var(--text); }
   .tab.active { border-color: #3d3580; }
-  .add-option[data-type="local"] .add-option-icon { background: #1a2535; }
-  .add-option[data-type="remote"] .add-option-icon { background: #1f1d35; }
 }
 
 @media (prefers-reduced-motion: reduce) {

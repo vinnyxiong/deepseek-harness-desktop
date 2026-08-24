@@ -13,7 +13,6 @@ const placeholderDesc = $('#placeholder-desc');
 const placeholderError = $('#placeholder-error');
 const placeholderErrorText = $('#placeholder-error-text');
 const placeholderRetryBtn = $('#placeholder-retry-btn');
-const addDialog = $('#add-dialog');
 const configDialog = $('#config-dialog');
 
 // Config dialog fields
@@ -209,6 +208,7 @@ function renderTabBar() {
     const isRemote = host.type === 'remote';
     const needsUpdate = snap.needsUpdate && snap.state === 'connected';
     const isTransferring = snap.progress?.phase === 'remote-transferring';
+    const canDelete = hosts.length > 1; // always keep at least one host
 
     const icon = esc(host.icon || '🖥️');
     const name = esc(host.name);
@@ -220,7 +220,7 @@ function renderTabBar() {
       ${needsUpdate ? '<span class="tab-badge" title="远程 DSH 版本过旧"></span>' : ''}
       ${isTransferring ? '<span class="tab-spinner" title="正在传输..."></span>' : ''}
       <span class="tab-status-dot ${statusCls}"></span>
-      ${isRemote ? '<span class="tab-close" title="删除 Host">&times;</span>' : ''}
+      ${canDelete ? '<span class="tab-close" title="删除 Host">&times;</span>' : ''}
     `;
 
     // Click tab to select
@@ -282,7 +282,7 @@ function selectHost(hostId) {
 async function deleteHost(hostId) {
   const host = hosts.find(h => h.id === hostId);
   if (!host) return;
-  if (host.type === 'local') return;
+  if (hosts.length <= 1) return;
   if (!confirm(`确定要删除 ${host.name} 吗？`)) return;
   await doAction(async () => {
     await api.deleteHost(hostId);
@@ -413,8 +413,8 @@ function showContextMenu(hostId, x, y) {
   // Refresh
   items.push({ label: '刷新', action: () => refresh() });
 
-  // Delete (remote only)
-  if (isRemote) {
+  // Delete (any host, but keep at least one)
+  if (hosts.length > 1) {
     items.push({ separator: true });
     items.push({ label: '删除 Host', danger: true, action: () => doAction(async () => {
       if (!confirm('确定要删除这个 Host 吗？')) return;
@@ -545,22 +545,14 @@ $('#cfg-icon-btn').addEventListener('click', () => {
   }, 0);
 });
 
-// Add host dialog
-$('#add-tab-btn').addEventListener('click', () => addDialog.showModal());
-$('#cancel-add-btn').addEventListener('click', () => addDialog.close());
-
-addDialog.querySelectorAll('.add-option').forEach(btn => {
-  btn.addEventListener('click', () => doAction(async () => {
-    const type = btn.dataset.type;
-    const name = type === 'local' ? '本机' : '新服务器';
-    await api.addHost({ type, name });
-    addDialog.close();
-    await refresh();
-    const state = await api.getState();
-    const last = state.hosts[state.hosts.length - 1];
-    if (last) selectHost(last.id);
-  }));
-});
+// + button: directly create remote host and open config
+$('#add-tab-btn').addEventListener('click', () => doAction(async () => {
+  const host = await api.addHost({ type: 'remote', name: '新服务器' });
+  await refresh();
+  selectHost(host.id);
+  // Open config dialog so user can fill in SSH details immediately
+  setTimeout(() => openConfigDialog(host.id), 100);
+}));
 
 // --- Keyboard shortcuts ---
 

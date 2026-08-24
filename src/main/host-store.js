@@ -147,9 +147,9 @@ function validateSettings(value) {
     ids.add(h.id);
   }
 
-  // Must have at least one local host
-  if (!hosts.some(h => h.type === 'local')) {
-    throw new TypeError('At least one local host is required');
+  // Must have at least one host
+  if (hosts.length === 0) {
+    throw new TypeError('At least one host is required');
   }
 
   return { schemaVersion: CURRENT_SCHEMA_VERSION, hosts };

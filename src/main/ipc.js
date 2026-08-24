@@ -69,7 +69,6 @@ function registerHostIpc({ actions, manager, windows, store, getWarning, setActi
       const settings = store.get();
       const host = settings.hosts.find(h => h.id === hostId);
       if (!host) throw new Error('Host not found');
-      if (host.type === 'local') throw new Error('Cannot delete the local host');
       await manager.disconnect(hostId);
       const hosts = settings.hosts.filter(h => h.id !== hostId);
       store.set(await store.save({ ...settings, hosts }));
