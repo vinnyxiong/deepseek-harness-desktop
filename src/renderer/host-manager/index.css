@@ -204,7 +204,7 @@ dialog {
 }
 dialog::backdrop { background: rgba(0,0,0,.3); }
 .dialog-content { padding: 24px; }
-.dialog-content h3 { margin: 0 0 18px; font-size: 16px; }
+.dialog-content h3 { margin: 0 0 18px; font-size: 16px; color: var(--text); }
 .dialog-options { display: flex; gap: 12px; margin-bottom: 20px; }
 .add-option {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px;

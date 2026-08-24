@@ -124,8 +124,11 @@ function showContextMenu(hostId, x, y) {
       if (!confirm('确定要删除这个 Host 吗？')) return;
       await api.deleteHost(hostId);
       destroyWebview(hostId);
+      hosts = hosts.filter(h => h.id !== hostId);
       if (selectedHostId === hostId) selectedHostId = null;
-      await refresh();
+      renderHostList();
+      renderProgress();
+      showWebview(null);
     }) });
   }
 
@@ -366,8 +369,11 @@ $('#save-config-btn').addEventListener('click', () => doAction(async () => {
     updated.autoInstallRemoteDsh = cfgAutoInstall.checked;
   }
   await api.updateHost(updated);
+  // Update local state directly instead of full refresh
+  Object.assign(host, updated);
   configDialog.close();
-  await refresh();
+  renderHostList();
+  renderProgress();
 }));
 
 $('#delete-config-btn').addEventListener('click', () => doAction(async () => {
@@ -377,9 +383,12 @@ $('#delete-config-btn').addEventListener('click', () => doAction(async () => {
   if (!confirm('确定要删除这个 Host 吗？')) return;
   await api.deleteHost(selectedHostId);
   destroyWebview(selectedHostId);
+  hosts = hosts.filter(h => h.id !== selectedHostId);
   selectedHostId = null;
   configDialog.close();
-  await refresh();
+  renderHostList();
+  renderProgress();
+  showWebview(null);
 }));
 
 $('#cancel-config-btn').addEventListener('click', () => configDialog.close());
