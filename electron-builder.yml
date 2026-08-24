@@ -42,18 +42,5 @@ mac:
     - dmg
     - zip
 
-win:
-  icon: build/icon.ico
-  target:
-    - nsis
-    - portable
-  nsis:
-    oneClick: false
-    allowChangeInstallationDirectory: true
-
-linux:
-  icon: build/icon-512.png
-  category: Development
-  target:
-    - AppImage
-    - deb
+win: null
+linux: null

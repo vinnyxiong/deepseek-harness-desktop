@@ -1,0 +1,9 @@
+linux:
+  icon: build/icon-512.png
+  category: Development
+  target:
+    - AppImage
+    - deb
+
+mac: null
+win: null

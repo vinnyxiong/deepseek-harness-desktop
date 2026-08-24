@@ -1,0 +1,11 @@
+win:
+  icon: build/icon.ico
+  target:
+    - nsis
+    - portable
+  nsis:
+    oneClick: false
+    allowChangeInstallationDirectory: true
+
+mac: null
+linux: null
