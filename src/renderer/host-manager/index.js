@@ -255,10 +255,6 @@ function renderHostList() {
       e.preventDefault();
       showContextMenu(host.id, e.clientX, e.clientY);
     });
-    li.querySelector('.host-item-emoji').addEventListener('click', e => {
-      e.stopPropagation();
-      showEmojiPicker(host.id);
-    });
     hostList.appendChild(li);
   }
 }
@@ -388,40 +384,26 @@ $('#delete-config-btn').addEventListener('click', () => doAction(async () => {
 
 $('#cancel-config-btn').addEventListener('click', () => configDialog.close());
 
-// Emoji picker
+// Emoji picker (in config dialog)
 const EMOJI_LIST = ['🖥️', '🖥', '🖳', '💻', '🖧', '🖴', '🖵', '🗄️', '🛠️', '📦', '🚀', '⚡', '🔧', '🔮', '🌐', '💡', '🦾', '🏠', '🌍', '📡', '🖥️', '⌨️', '🖱️', '🖲️', '🔌', '💾', '📀', '🔋', '🧠', '🤖', '🔥', '⭐', '🌀', '🎯', '🏗️', '📊', '🧩', '🪄', '✨', '🛡️'];
-let editingIconForHostId = null;
 
-function showEmojiPicker(hostId) {
-  editingIconForHostId = hostId;
-  let picker = $('#emoji-picker');
+$('#cfg-icon-btn').addEventListener('click', () => {
+  let picker = configDialog.querySelector('.emoji-picker');
   if (!picker) {
     picker = document.createElement('div');
-    picker.id = 'emoji-picker';
     picker.className = 'emoji-picker';
     picker.innerHTML = EMOJI_LIST.map(e => `<span class="emoji-option" data-emoji="${e}">${e}</span>`).join('');
     picker.addEventListener('click', e => {
       const opt = e.target.closest('.emoji-option');
       if (!opt) return;
-      const emoji = opt.dataset.emoji;
-      doAction(async () => {
-        const host = hosts.find(h => h.id === editingIconForHostId);
-        if (!host) return;
-        const updated = { ...host, icon: emoji };
-        await api.updateHost(updated);
-        await refresh();
-      });
+      cfgIcon.textContent = opt.dataset.emoji;
       picker.classList.remove('visible');
     });
-    document.body.appendChild(picker);
+    configDialog.appendChild(picker);
   }
-  // Position near the clicked emoji
-  const el = document.querySelector(`.host-item-emoji`);
-  const rect = el?.getBoundingClientRect();
-  if (rect) {
-    picker.style.top = `${rect.bottom + 4}px`;
-    picker.style.left = `${rect.left}px`;
-  }
+  const rect = cfgIcon.getBoundingClientRect();
+  picker.style.top = `${rect.bottom + 4}px`;
+  picker.style.left = `${rect.left}px`;
   picker.classList.toggle('visible');
   setTimeout(() => {
     const closePicker = e => {
@@ -432,26 +414,7 @@ function showEmojiPicker(hostId) {
     };
     document.addEventListener('click', closePicker);
   }, 0);
-}
-
-$('#cfg-icon-btn').addEventListener('click', () => {
-  let picker = $('#emoji-picker');
-  if (!picker) {
-    picker = document.createElement('div');
-    picker.id = 'emoji-picker';
-    picker.className = 'emoji-picker';
-    picker.innerHTML = EMOJI_LIST.map(e => `<span class="emoji-option" data-emoji="${e}">${e}</span>`).join('');
-    picker.addEventListener('click', e => {
-      const opt = e.target.closest('.emoji-option');
-      if (!opt) return;
-      cfgIcon.textContent = opt.dataset.emoji;
-      picker.classList.remove('visible');
-    });
-    document.body.appendChild(picker);
-  }
-  const rect = cfgIcon.getBoundingClientRect();
-  picker.style.top = `${rect.bottom + 4}px`;
-  picker.style.left = `${rect.left}px`;
+});
   picker.classList.toggle('visible');
   setTimeout(() => {
     const closePicker = e => {
