@@ -5,7 +5,7 @@ const { buildCommonSshOptions, DEFAULT_SSH_PATH } = require('./managed-ssh');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
 
 // Remote directory layout.
-const DSH_REMOTE_BASE_DIR = '~/.local/state/dsh';
+const DSH_REMOTE_BASE_DIR = '$HOME/.local/state/dsh';
 const DSH_REMOTE_RUNNER_DIR = `${DSH_REMOTE_BASE_DIR}/runner`;
 const DSH_REMOTE_BIN = `${DSH_REMOTE_RUNNER_DIR}/node_modules/.bin/dsh`;
 const DSH_REMOTE_VERSION_FILE = `${DSH_REMOTE_RUNNER_DIR}/.dsh-version`;
