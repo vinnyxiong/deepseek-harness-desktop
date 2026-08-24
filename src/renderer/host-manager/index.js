@@ -5,15 +5,6 @@ const $ = s => document.querySelector(s);
 const sidebar = $('#sidebar');
 const dragHandle = $('#drag-handle');
 const hostList = $('#host-list');
-const statusText = $('#status-text');
-const statusEndpoint = $('#status-endpoint');
-const connectBtn = $('#connect-btn');
-const disconnectBtn = $('#disconnect-btn');
-const stopBtn = $('#stop-btn');
-const restartBtn = $('#restart-btn');
-const retryBtn = $('#retry-btn');
-const updateBtn = $('#update-btn');
-const configBtn = $('#config-btn');
 const progressBar = $('#progress-bar');
 const progressBarText = $('#progress-bar-text');
 const webviewContainer = $('#webview-container');
@@ -43,6 +34,136 @@ let busy = false;
 let refreshGeneration = 0;
 // Map<hostId, webview>
 const webviews = new Map();
+
+// --- Context menu ---
+
+let contextMenu = null;
+
+function createContextMenu() {
+  if (contextMenu) return;
+  contextMenu = document.createElement('div');
+  contextMenu.id = 'context-menu';
+  contextMenu.className = 'context-menu';
+  document.body.appendChild(contextMenu);
+}
+
+function showContextMenu(hostId, x, y) {
+  createContextMenu();
+  const host = hosts.find(h => h.id === hostId);
+  const snap = host ? (snapshots[host.id] || { state: 'idle' }) : { state: 'idle' };
+  const isConnected = snap.state === 'connected';
+  const isTransferring = snap.progress?.phase === 'remote-transferring';
+  const isConnecting = snap.state === 'connecting' || isTransferring;
+  const isRemote = host?.type === 'remote';
+
+  const items = [];
+
+  // Connect / Disconnect
+  if (isConnected) {
+    items.push({ label: '断开', action: () => doAction(async () => { await api.disconnect(hostId); await refresh(); }) });
+  } else if (!isConnecting) {
+    items.push({ label: '连接', action: () => doAction(async () => {
+      const snap = await api.connect(hostId);
+      if (snap.state === 'connected' && snap.endpoint) {
+        getOrCreateWebview(hostId, snap.endpoint);
+        showWebview(hostId);
+      }
+      await refresh();
+    }) });
+  }
+
+  // Remote-specific actions
+  if (isRemote) {
+    if (snap.remoteDsh?.running) {
+      items.push({ label: '停止远程 DSH', action: () => doAction(async () => {
+        if (!confirm('确定要停止远程 DSH 吗？SSH 隧道也会断开。')) return;
+        await api.stopRemoteDsh(hostId);
+        await refresh();
+      }) });
+    }
+    items.push({ label: '重启远程 DSH', action: () => doAction(async () => {
+      await api.restartRemoteDsh(hostId);
+      await refresh();
+    }) });
+  }
+
+  // Retry (on error)
+  if (snap.state === 'error') {
+    items.push({ label: '重试', action: () => doAction(async () => {
+      const snap = await api.connect(hostId);
+      if (snap.state === 'connected' && snap.endpoint) {
+        getOrCreateWebview(hostId, snap.endpoint);
+        showWebview(hostId);
+      }
+      await refresh();
+    }) });
+  }
+
+  // Update
+  if (isConnected && snap.needsUpdate) {
+    items.push({ label: '更新远程 DSH', action: () => doAction(async () => {
+      if (!confirm('确定要更新远程 DSH 吗？更新过程中连接会暂时中断。')) return;
+      try { await api.updateRemoteDsh(hostId); } catch (error) { console.error('Failed to update remote DSH:', error); }
+      await refresh();
+    }) });
+  }
+
+  // Separator
+  if (items.length > 0) items.push({ separator: true });
+
+  // Config
+  items.push({ label: '编辑配置', action: () => openConfigDialog(hostId) });
+
+  // Refresh
+  items.push({ label: '刷新', action: () => refresh() });
+
+  // Delete (remote only)
+  if (isRemote) {
+    items.push({ separator: true });
+    items.push({ label: '删除 Host', danger: true, action: () => doAction(async () => {
+      if (!confirm('确定要删除这个 Host 吗？')) return;
+      await api.deleteHost(hostId);
+      destroyWebview(hostId);
+      if (selectedHostId === hostId) selectedHostId = null;
+      await refresh();
+    }) });
+  }
+
+  // Build menu HTML
+  contextMenu.innerHTML = items.map(item => {
+    if (item.separator) return '<div class="context-menu-separator"></div>';
+    const cls = item.danger ? 'context-menu-item danger' : 'context-menu-item';
+    return `<div class="${cls}" data-action="${item.label}">${item.label}</div>`;
+  }).join('');
+
+  // Position menu
+  const menuWidth = 180;
+  const menuHeight = items.length * 32 + (items.filter(i => i.separator).length * 5);
+  let left = x;
+  let top = y;
+  if (left + menuWidth > window.innerWidth) left = window.innerWidth - menuWidth - 8;
+  if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 8;
+  contextMenu.style.left = `${left}px`;
+  contextMenu.style.top = `${top}px`;
+  contextMenu.classList.add('visible');
+
+  // Bind actions
+  contextMenu.querySelectorAll('.context-menu-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const item = items.find(i => i.label === el.dataset.action);
+      if (item?.action) item.action();
+      hideContextMenu();
+    });
+  });
+}
+
+function hideContextMenu() {
+  if (contextMenu) contextMenu.classList.remove('visible');
+}
+
+document.addEventListener('click', e => {
+  if (contextMenu && !contextMenu.contains(e.target)) hideContextMenu();
+});
 
 // --- Webview management ---
 
@@ -130,6 +251,10 @@ function renderHostList() {
       <span class="host-item-dot ${snap.state}"></span>
     `;
     li.addEventListener('click', () => selectHost(host.id));
+    li.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      showContextMenu(host.id, e.clientX, e.clientY);
+    });
     li.querySelector('.host-item-emoji').addEventListener('click', e => {
       e.stopPropagation();
       showEmojiPicker(host.id);
@@ -138,53 +263,17 @@ function renderHostList() {
   }
 }
 
-function renderStatus() {
+function renderProgress() {
   const host = hosts.find(h => h.id === selectedHostId);
   const snap = host ? (snapshots[host.id] || { state: 'idle' }) : { state: 'idle' };
-  const isConnected = snap.state === 'connected';
   const isTransferring = snap.progress?.phase === 'remote-transferring';
-  const isConnecting = snap.state === 'connecting' || isTransferring;
 
-  // Status text
-  if (snap.state === 'error' && snap.error) {
-    statusText.textContent = snap.error;
-  } else {
-    statusText.textContent = snap.progress?.message || statusLabel(snap);
-  }
-  if (snap.needsUpdate && snap.remoteVersion && snap.bundledVersion) {
-    statusText.textContent += ` (远程: ${snap.remoteVersion} → 可用: ${snap.bundledVersion})`;
-  }
-
-  // Endpoint
-  if (snap.endpoint) {
-    statusEndpoint.hidden = false;
-    statusEndpoint.textContent = snap.endpoint;
-  } else {
-    statusEndpoint.hidden = true;
-  }
-
-  // Progress bar
   if (isTransferring) {
     progressBar.hidden = false;
     progressBarText.textContent = snap.progress?.message || '正在传输 DSH...';
   } else {
     progressBar.hidden = true;
   }
-
-  // Buttons
-  connectBtn.hidden = !host || isConnected || isConnecting;
-  disconnectBtn.hidden = !isConnected;
-  stopBtn.hidden = !host || host.type !== 'remote' || !snap.remoteDsh?.running;
-  restartBtn.hidden = !host || host.type !== 'remote';
-  retryBtn.hidden = snap.state !== 'error';
-  updateBtn.hidden = !isConnected || !snap.needsUpdate;
-  configBtn.hidden = !host;
-}
-
-function statusLabel(snap) {
-  if (snap.progress?.message) return snap.progress.message;
-  const labels = { idle: '未连接', connecting: '连接中...', connected: '已连接', error: '错误' };
-  return labels[snap.state] || snap.state;
 }
 
 function stateLabel(snap) {
@@ -201,7 +290,7 @@ function selectHost(hostId) {
   selectedHostId = hostId;
   void api.setActiveHost(hostId).catch(error => console.error('Failed to select active host:', error));
   renderHostList();
-  renderStatus();
+  renderProgress();
   showWebview(hostId);
 }
 
@@ -223,7 +312,7 @@ async function refresh() {
     }
     reconcileWebviews();
     renderHostList();
-    renderStatus();
+    renderProgress();
     showWebview(selectedHostId);
   } catch (error) {
     console.error('Failed to refresh:', error);
@@ -238,55 +327,10 @@ async function doAction(action) {
   } finally { busy = false; }
 }
 
-// --- Event handlers ---
+// --- Config dialog ---
 
-connectBtn.addEventListener('click', () => doAction(async () => {
-  const snap = await api.connect(selectedHostId);
-  if (snap.state === 'connected' && snap.endpoint) {
-    getOrCreateWebview(selectedHostId, snap.endpoint);
-    showWebview(selectedHostId);
-  }
-  await refresh();
-}));
-
-disconnectBtn.addEventListener('click', () => doAction(async () => {
-  await api.disconnect(selectedHostId);
-  await refresh();
-}));
-
-stopBtn.addEventListener('click', () => doAction(async () => {
-  if (!confirm('确定要停止远程 DSH 吗？SSH 隧道也会断开。')) return;
-  await api.stopRemoteDsh(selectedHostId);
-  await refresh();
-}));
-
-restartBtn.addEventListener('click', () => doAction(async () => {
-  await api.restartRemoteDsh(selectedHostId);
-  await refresh();
-}));
-
-retryBtn.addEventListener('click', () => doAction(async () => {
-  const snap = await api.connect(selectedHostId);
-  if (snap.state === 'connected' && snap.endpoint) {
-    getOrCreateWebview(selectedHostId, snap.endpoint);
-    showWebview(selectedHostId);
-  }
-  await refresh();
-}));
-
-updateBtn.addEventListener('click', () => doAction(async () => {
-  if (!confirm('确定要更新远程 DSH 吗？更新过程中连接会暂时中断。')) return;
-  try {
-    await api.updateRemoteDsh(selectedHostId);
-  } catch (error) {
-    console.error('Failed to update remote DSH:', error);
-  }
-  await refresh();
-}));
-
-// Config dialog
-configBtn.addEventListener('click', () => {
-  const host = hosts.find(h => h.id === selectedHostId);
+function openConfigDialog(hostId) {
+  const host = hosts.find(h => h.id === hostId);
   if (!host) return;
   const isRemote = host.type === 'remote';
   cfgIcon.textContent = host.icon || '🖥️';
@@ -305,7 +349,7 @@ configBtn.addEventListener('click', () => {
     cfgAutoInstall.checked = host.autoInstallRemoteDsh ?? true;
   }
   configDialog.showModal();
-});
+}
 
 $('#save-config-btn').addEventListener('click', () => doAction(async () => {
   const host = hosts.find(h => h.id === selectedHostId);
@@ -442,7 +486,7 @@ api.onStatus((hostId, snapshot) => {
   reconcileWebviews();
   renderHostList();
   if (hostId === selectedHostId) {
-    renderStatus();
+    renderProgress();
     showWebview(selectedHostId);
   }
 });

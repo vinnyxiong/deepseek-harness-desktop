@@ -142,20 +142,6 @@ button.small { min-height: 24px; padding: 2px 8px; font-size: 11px; }
   min-width: 0; min-height: 0; overflow: hidden;
 }
 
-/* Status bar */
-.status-bar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-  font-size: 12px; font-weight: 560;
-  flex-shrink: 0;
-  min-height: 36px;
-}
-.status-bar #status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.status-endpoint { font-family: monospace; font-size: 11px; color: var(--text-muted); }
-.status-actions { display: flex; gap: 4px; flex-shrink: 0; }
-
 /* Progress bar */
 .install-progress {
   display: flex; align-items: center;
@@ -259,6 +245,27 @@ input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px 
 .checkbox-label input { width: 15px; height: 15px; margin-top: 1px; accent-color: var(--primary); }
 .checkbox-label span { display: flex; flex-direction: column; gap: 2px; }
 .checkbox-label strong { font-size: 12px; }
+
+/* Context menu */
+.context-menu {
+  position: fixed; z-index: 2000; display: none;
+  min-width: 160px; padding: 4px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md);
+  background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  font-size: 12px;
+}
+.context-menu.visible { display: block; }
+.context-menu-item {
+  padding: 6px 12px; border-radius: 5px; cursor: pointer;
+  white-space: nowrap; transition: background .1s;
+  color: var(--text);
+}
+.context-menu-item:hover { background: var(--surface-muted); }
+.context-menu-item.danger { color: var(--danger); }
+.context-menu-item.danger:hover { background: var(--danger-bg); }
+.context-menu-separator {
+  height: 1px; margin: 4px 8px; background: var(--line);
+}
 
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
