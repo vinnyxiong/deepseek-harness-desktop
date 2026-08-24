@@ -49,10 +49,14 @@ const webviews = new Map();
 function getOrCreateWebview(hostId, endpoint) {
   let wv = webviews.get(hostId);
   if (wv) {
-    if (wv.getAttribute('src') !== endpoint) wv.setAttribute('src', endpoint);
+    if (wv.getAttribute('src') !== endpoint) {
+      console.log(`[webview] ${hostId}: switching src to ${endpoint}`);
+      wv.setAttribute('src', endpoint);
+    }
     return wv;
   }
 
+  console.log(`[webview] ${hostId}: creating webview for ${endpoint}`);
   wv = document.createElement('webview');
   wv.id = `webview-${hostId}`;
   wv.setAttribute('src', endpoint);
@@ -60,9 +64,16 @@ function getOrCreateWebview(hostId, endpoint) {
   wv.setAttribute('partition', `persist:dsh-${hostId}`);
   wv.style.cssText = 'display:none;';
 
-  // Ensure the DSH page fills the webview — the DSH frontend
-  // doesn't set height:100% on html/body/#root by default.
+  wv.addEventListener('did-start-loading', () => console.log(`[webview] ${hostId}: started loading`));
+  wv.addEventListener('did-stop-loading', () => console.log(`[webview] ${hostId}: stopped loading`));
+  wv.addEventListener('did-navigate', (e) => console.log(`[webview] ${hostId}: navigated to ${e.url}`));
+  wv.addEventListener('did-navigate-in-page', (e) => console.log(`[webview] ${hostId}: in-page nav to ${e.url}`));
+  wv.addEventListener('did-fail-load', (e) => console.error(`[webview] ${hostId}: FAILED ${e.errorCode} ${e.errorDescription} for ${e.validatedURL}`));
+  wv.addEventListener('console-message', (e) => console.log(`[webview] ${hostId}: console[${e.level}] ${e.message}`));
+  wv.addEventListener('page-title-updated', (e) => console.log(`[webview] ${hostId}: title = ${e.title}`));
+
   wv.addEventListener('dom-ready', () => {
+    console.log(`[webview] ${hostId}: dom-ready`);
     wv.insertCSS('html,body,#root{height:100%;margin:0;padding:0}');
   });
 
