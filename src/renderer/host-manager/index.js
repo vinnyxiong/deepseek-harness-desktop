@@ -34,7 +34,6 @@ const cfgAutoInstall = $('#cfg-auto-install');
 let hosts = [];
 let selectedHostId = null;
 let snapshots = {};
-let busy = false;
 let refreshGeneration = 0;
 // Map<hostId, webview>
 const webviews = new Map();
@@ -209,7 +208,6 @@ function renderTabBar() {
     const isRemote = host.type === 'remote';
     const needsUpdate = snap.needsUpdate && snap.state === 'connected';
     const isTransferring = snap.progress?.phase === 'remote-transferring';
-    const canDelete = hosts.length > 1; // always keep at least one host
 
     const icon = esc(host.icon || '🖥️');
     const name = esc(host.name);
@@ -221,23 +219,12 @@ function renderTabBar() {
       ${needsUpdate ? '<span class="tab-badge" title="远程 DSH 版本过旧"></span>' : ''}
       ${isTransferring ? '<span class="tab-spinner" title="正在传输..."></span>' : ''}
       <span class="tab-status-dot ${statusCls}"></span>
-      ${canDelete ? '<span class="tab-close" title="删除 Host">&times;</span>' : ''}
     `;
 
     // Click tab to select
     tab.addEventListener('click', e => {
-      if (e.target.closest('.tab-close')) return;
       selectHost(host.id);
     });
-
-    // Close button (remote hosts only)
-    const closeBtn = tab.querySelector('.tab-close');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        deleteHost(host.id);
-      });
-    }
 
     // Context menu
     tab.addEventListener('contextmenu', e => {
@@ -326,11 +313,9 @@ async function refresh() {
 }
 
 async function doAction(action) {
-  if (busy) return;
-  busy = true;
   try { await action(); } catch (error) {
     console.error(error);
-  } finally { busy = false; }
+  }
 }
 
 // --- Context menu ---
@@ -462,7 +447,7 @@ function hideContextMenu() {
   if (contextMenu) contextMenu.classList.remove('visible');
 }
 
-document.addEventListener('click', e => {
+document.addEventListener('mousedown', e => {
   if (contextMenu && !contextMenu.contains(e.target)) hideContextMenu();
 });
 

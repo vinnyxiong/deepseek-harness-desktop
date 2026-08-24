@@ -129,22 +129,6 @@ body[data-platform="linux"] .tab-bar {
 .tab-status-dot.error { background: var(--danger); box-shadow: 0 0 0 3px rgba(217, 57, 77, .15); }
 .tab-status-dot.connecting { background: var(--warning); animation: pulse 1.2s ease-in-out infinite; }
 
-.tab-close {
-  width: 16px; height: 16px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 10px;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity .12s;
-  -webkit-app-region: no-drag;
-  cursor: pointer;
-  color: var(--text-muted);
-  line-height: 1;
-}
-.tab:hover .tab-close { opacity: 1; }
-.tab-close:hover { background: var(--line); color: var(--text); }
-
 /* Version update badge */
 .tab-badge {
   width: 8px; height: 8px;
