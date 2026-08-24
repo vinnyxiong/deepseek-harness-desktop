@@ -53,13 +53,18 @@ function getOrCreateWebview(hostId, endpoint) {
     return wv;
   }
 
-  // Use iframe instead of <webview> — <webview> is deprecated in Electron 43
-  // and requires a separate renderer process with its own CSP context.
-  wv = document.createElement('iframe');
+  wv = document.createElement('webview');
   wv.id = `webview-${hostId}`;
   wv.setAttribute('src', endpoint);
-  wv.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+  wv.setAttribute('allowpopups', '');
+  wv.setAttribute('partition', `persist:dsh-${hostId}`);
   wv.style.cssText = 'display:none;';
+
+  // Ensure the DSH page fills the webview — the DSH frontend
+  // doesn't set height:100% on html/body/#root by default.
+  wv.addEventListener('dom-ready', () => {
+    wv.insertCSS('html,body,#root{height:100%;margin:0;padding:0}');
+  });
 
   webviewContainer.appendChild(wv);
   webviews.set(hostId, wv);

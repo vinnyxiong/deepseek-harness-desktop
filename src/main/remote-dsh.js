@@ -447,20 +447,22 @@ async function startRemoteDsh(settings, opts = {}) {
 // is impractical here (no tunnel yet), so we ask the remote host itself to curl
 // the loopback endpoint.
 async function performRemoteHealthCheck(settings, port, opts = {}) {
-  // Only check that the port is accepting HTTP connections. The DSH web app
-  // may still be loading plugins ("Loading Plugin..."), so don't wait for
-  // specific page content — just verify the HTTP server is alive.
+  // Use node to make the HTTP request instead of curl, because curl is not
+  // guaranteed to be installed on all Linux distributions. Node is always
+  // available since we just used it to start dsh.
   const cmd = `for i in $(seq 1 20); do
-    node -e "
+    BODY=$(node -e "
       const http = require('http');
-      http.get('http://127.0.0.1:${port}/', { timeout: 2000 }, (res) => {
-        res.resume();
-        process.stdout.write('HEALTHY');
+      http.get('http://127.0.0.1:${port}/', { timeout: 3000 }, (res) => {
+        let data = '';
+        res.on('data', (c) => { data += c; });
+        res.on('end', () => { process.stdout.write(data); });
       }).on('error', () => {});
-    " 2>/dev/null && echo "HEALTHY" && exit 0;
+    " 2>/dev/null || true);
+    if echo "$BODY" | grep -q 'DeepSeek'; then echo "HEALTHY"; exit 0; fi;
     sleep 0.5;
   done; echo "UNHEALTHY"; exit 1`;
-  const { stdout } = await runRemoteCommand(settings, cmd, { ...opts, timeoutMs: opts.timeoutMs ?? 15_000 });
+  const { stdout } = await runRemoteCommand(settings, cmd, { ...opts, timeoutMs: opts.timeoutMs ?? 20_000 });
   return stdout.includes('HEALTHY');
 }
 
