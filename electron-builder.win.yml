@@ -1,3 +1,36 @@
+appId: com.deepseek.harness
+productName: DeepSeek Harness
+copyright: Copyright DeepSeek
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - src/**/*
+  - node_modules/**/*
+  - package.json
+  - "!node_modules/.cache/**"
+
+asar: true
+nodeGypRebuild: false
+npmRebuild: false
+nativeRebuilder: null
+asarUnpack:
+  - node_modules/**/*
+
+extraResources:
+  - from: dsh-bundle.tar.gz
+    to: dsh-bundle.tar.gz
+  - from: dsh-bundle.version
+    to: dsh-bundle.version
+  - from: dsh-bundle.manifest.json
+    to: dsh-bundle.manifest.json
+
+publish:
+  provider: github
+  owner: vinnyxiong
+  repo: deepseek-harness-desktop
+
 win:
   icon: build/icon.ico
   target:
