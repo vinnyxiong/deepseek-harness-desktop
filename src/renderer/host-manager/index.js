@@ -330,6 +330,8 @@ async function doAction(action) {
 // --- Config dialog ---
 
 function openConfigDialog(hostId) {
+  // Ensure the correct host is selected for save to work
+  selectedHostId = hostId;
   const host = hosts.find(h => h.id === hostId);
   if (!host) return;
   const isRemote = host.type === 'remote';
@@ -338,6 +340,7 @@ function openConfigDialog(hostId) {
   cfgSsh.hidden = !isRemote;
   cfgSshPolicy.hidden = !isRemote;
   cfgStartup.hidden = !isRemote;
+  $('#delete-config-btn').hidden = !isRemote;
   if (isRemote) {
     cfgHost.value = host.host || '';
     cfgUsername.value = host.username || '';
