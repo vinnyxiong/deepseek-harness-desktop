@@ -447,7 +447,21 @@ async function startRemoteDsh(settings, opts = {}) {
 // is impractical here (no tunnel yet), so we ask the remote host itself to curl
 // the loopback endpoint.
 async function performRemoteHealthCheck(settings, port, opts = {}) {
-  const cmd = `for i in $(seq 1 20); do BODY=$(curl -sS --max-time 3 http://127.0.0.1:${port}/ 2>/dev/null || true); if echo "$BODY" | grep -q 'DeepSeek Harness'; then echo "HEALTHY"; exit 0; fi; sleep 0.5; done; echo "UNHEALTHY"; exit 1`;
+  // Use node to make the HTTP request instead of curl, because curl is not
+  // guaranteed to be installed on all Linux distributions. Node is always
+  // available since we just used it to start dsh.
+  const cmd = `for i in $(seq 1 20); do
+    BODY=$(node -e "
+      const http = require('http');
+      http.get('http://127.0.0.1:${port}/', { timeout: 3000 }, (res) => {
+        let data = '';
+        res.on('data', (c) => { data += c; });
+        res.on('end', () => { process.stdout.write(data); });
+      }).on('error', () => {});
+    " 2>/dev/null || true);
+    if echo "$BODY" | grep -q 'DeepSeek'; then echo "HEALTHY"; exit 0; fi;
+    sleep 0.5;
+  done; echo "UNHEALTHY"; exit 1`;
   const { stdout } = await runRemoteCommand(settings, cmd, { ...opts, timeoutMs: opts.timeoutMs ?? 20_000 });
   return stdout.includes('HEALTHY');
 }
