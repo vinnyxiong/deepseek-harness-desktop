@@ -13,6 +13,7 @@ const placeholderDesc = $('#placeholder-desc');
 const placeholderError = $('#placeholder-error');
 const placeholderErrorText = $('#placeholder-error-text');
 const placeholderRetryBtn = $('#placeholder-retry-btn');
+const addDialog = $('#add-dialog');
 const configDialog = $('#config-dialog');
 
 // Config dialog fields
@@ -318,6 +319,7 @@ async function refresh() {
     renderTabBar();
     renderProgress();
     showWebview(selectedHostId);
+    updateAddDialog();
   } catch (error) {
     console.error('Failed to refresh:', error);
   }
@@ -545,14 +547,29 @@ $('#cfg-icon-btn').addEventListener('click', () => {
   }, 0);
 });
 
-// + button: directly create remote host and open config
-$('#add-tab-btn').addEventListener('click', () => doAction(async () => {
-  const host = await api.addHost({ type: 'remote', name: '新服务器' });
-  await refresh();
-  selectHost(host.id);
-  // Open config dialog so user can fill in SSH details immediately
-  setTimeout(() => openConfigDialog(host.id), 100);
-}));
+// + button: show add dialog, local option only when no local host exists
+$('#add-tab-btn').addEventListener('click', () => addDialog.showModal());
+$('#cancel-add-btn').addEventListener('click', () => addDialog.close());
+
+addDialog.querySelectorAll('.add-option').forEach(btn => {
+  btn.addEventListener('click', () => doAction(async () => {
+    const type = btn.dataset.type;
+    const name = type === 'local' ? '本机' : '新服务器';
+    await api.addHost({ type, name });
+    addDialog.close();
+    await refresh();
+    const state = await api.getState();
+    const last = state.hosts[state.hosts.length - 1];
+    if (last) selectHost(last.id);
+  }));
+});
+
+// Hide local option when a local host already exists
+const updateAddDialog = () => {
+  const hasLocal = hosts.some(h => h.type === 'local');
+  const localBtn = addDialog.querySelector('[data-type="local"]');
+  if (localBtn) localBtn.hidden = hasLocal;
+};
 
 // --- Keyboard shortcuts ---
 
@@ -588,6 +605,7 @@ api.onStatus((hostId, snapshot) => {
     renderProgress();
     showWebview(selectedHostId);
   }
+  updateAddDialog();
 });
 
 api.onRefresh(() => refresh());
