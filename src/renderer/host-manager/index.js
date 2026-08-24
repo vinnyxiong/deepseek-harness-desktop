@@ -247,10 +247,7 @@ function renderHostList() {
     li.setAttribute('aria-selected', String(selectedHostId === host.id));
     li.innerHTML = `
       <span class="host-item-emoji">${esc(host.icon || '🖥️')}</span>
-      <div class="host-item-info">
-        <div class="host-item-name">${esc(host.name)}</div>
-        <div class="host-item-meta">${stateLabel(snap)}${snap.endpoint ? ' · ' + new URL(snap.endpoint).port : ''}</div>
-      </div>
+      <span class="host-item-name">${esc(host.name)}</span>
       <span class="host-item-dot ${snap.state}"></span>
       <span class="host-item-tooltip">${esc(host.name)} · ${stateLabel(snap)}</span>
     `;
@@ -487,8 +484,10 @@ dragHandle.addEventListener('dblclick', () => {
 });
 
 let dragging = false;
+let dragStartCollapsed = false;
 dragHandle.addEventListener('mousedown', e => {
   dragging = true;
+  dragStartCollapsed = sidebar.classList.contains('collapsed');
   sidebar.classList.add('dragging');
   dragHandle.classList.add('active');
   e.preventDefault();
@@ -497,12 +496,20 @@ dragHandle.addEventListener('mousedown', e => {
 document.addEventListener('mousemove', e => {
   if (!dragging) return;
   const rect = dragHandle.parentElement.getBoundingClientRect();
-  setSidebarWidth(e.clientX - rect.left);
+  let w = e.clientX - rect.left;
+  if (dragStartCollapsed && w > SIDEBAR_MIN + 10) {
+    // Immediately jump out of collapsed state
+    dragStartCollapsed = false;
+    setSidebarWidth(w);
+  } else {
+    setSidebarWidth(w);
+  }
 });
 
 document.addEventListener('mouseup', () => {
   if (!dragging) return;
   dragging = false;
+  dragStartCollapsed = false;
   sidebar.classList.remove('dragging');
   dragHandle.classList.remove('active');
 });

@@ -36,12 +36,8 @@ body {
 }
 #sidebar.dragging { transition: none; }
 
-#sidebar.collapsed {
-  --sidebar-width: 44px;
-}
 #sidebar.collapsed .sidebar-header h2,
 #sidebar.collapsed .host-item-name,
-#sidebar.collapsed .host-item-meta,
 #sidebar.collapsed .host-item-dot { display: none; }
 #sidebar.collapsed .sidebar-header { justify-content: center; padding: 14px 0 10px; }
 #sidebar.collapsed .host-item { justify-content: center; padding: 10px 0; position: relative; }
@@ -119,9 +115,7 @@ body {
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 
-.host-item-info { min-width: 0; }
-.host-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.host-item-meta { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.host-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 
 /* Emoji picker */
 .emoji-picker {
