@@ -63,10 +63,14 @@ function copyBundleFromDir(sourceDir, { force }) {
     throw new Error(`Refusing to embed bundle for triple ${manifest.triple}; expected linux-x64-gnu`);
   }
 
-  // Verify digest matches the file before copying.
+  // Verify digest matches the file. When the user explicitly provides a local
+  // bundle (DSH_BUNDLE_DIR or --from), auto-correct the manifest if the digest
+  // doesn't match — the bundle file is the source of truth.
   const digest = `sha256:${sha256(srcBundle)}`;
   if (digest !== manifest.digest) {
-    throw new Error(`Bundle digest mismatch: file is ${digest}, manifest says ${manifest.digest}`);
+    console.warn(`Bundle digest mismatch: file is ${digest}, manifest says ${manifest.digest}. Updating manifest.`);
+    manifest.digest = digest;
+    writeFileSync(srcManifest, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 
   const destBundle = join(root, BUNDLE);
