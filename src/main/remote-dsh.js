@@ -307,6 +307,12 @@ if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is 
 	  if [ -d "${DSH_REMOTE_RUNNER_DIR}.old/node_modules" ]; then
 	    cp -rn "${DSH_REMOTE_RUNNER_DIR}.old/node_modules/"* "${DSH_REMOTE_RUNNER_DIR}/node_modules/" 2>/dev/null || true
 	  fi
+	  # Restore user-installed profile plugins into the runner so the loader can resolve them.
+	  for prof_dir in "$HOME/.dsh/profiles/"*/; do
+	    if [ -d "$prof_dir/node_modules" ]; then
+	      cp -rn "$prof_dir/node_modules/"* "${DSH_REMOTE_RUNNER_DIR}/node_modules/" 2>/dev/null || true
+	    fi
+	  done
 	  rm -rf "${DSH_REMOTE_RUNNER_DIR}.old" 2>/dev/null || true
 	else
 	  mv "$STAGE" "${DSH_REMOTE_RUNNER_DIR}" || fail "failed to move staging into place"
