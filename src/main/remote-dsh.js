@@ -310,7 +310,12 @@ if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is 
 	  # Restore user-installed profile plugins into the runner so the loader can resolve them.
 	  for prof_dir in "$HOME/.dsh/profiles/"*/; do
 	    if [ -d "$prof_dir/node_modules" ]; then
-	      cp -rn "$prof_dir/node_modules/"* "${DSH_REMOTE_RUNNER_DIR}/node_modules/" 2>/dev/null || true
+	      for pkg in "$prof_dir/node_modules/"*/; do
+	        pkgname=$(basename "$pkg")
+	        if [ ! -e "${DSH_REMOTE_RUNNER_DIR}/node_modules/$pkgname" ]; then
+	          cp -r "$pkg" "${DSH_REMOTE_RUNNER_DIR}/node_modules/" 2>/dev/null || true
+	        fi
+	      done
 	    fi
 	  done
 	  rm -rf "${DSH_REMOTE_RUNNER_DIR}.old" 2>/dev/null || true
@@ -391,9 +396,20 @@ async function startRemoteDsh(settings, opts = {}) {
   // loader can resolve them. This must happen every start, not just during
   // transfer, because the identity check may pass (version match) and skip the
   // transfer entirely.
+  // Sync user-installed plugins from profile into runner. Only copy
+  // scoped packages that are NOT @deepseek-ai or @types — user-installed
+  // plugins like @nanmicoder/dsh-agent-teams. We must avoid copying native
+  // modules (node-pty, koffi, etc.) which are platform-specific and already
+  // provided by the bundle.
   const syncPluginsCmd = `for prof_dir in "$HOME/.dsh/profiles/"*/; do
     if [ -d "$prof_dir/node_modules" ]; then
-      cp -rn "$prof_dir/node_modules/"* "${DSH_REMOTE_RUNNER_DIR}/node_modules/" 2>/dev/null || true
+      for pkg in "$prof_dir/node_modules/"@*/; do
+        pkgname=$(basename "$pkg")
+        case "$pkgname" in @deepseek-ai|@types) continue ;; esac
+        if [ ! -d "${DSH_REMOTE_RUNNER_DIR}/node_modules/$pkgname" ]; then
+          cp -r "$pkg" "${DSH_REMOTE_RUNNER_DIR}/node_modules/$pkgname" 2>/dev/null || true
+        fi
+      done
     fi
   done`;
   await runRemoteCommand(settings, syncPluginsCmd, { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 }).catch(() => {});
