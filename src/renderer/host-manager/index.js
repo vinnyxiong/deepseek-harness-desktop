@@ -205,7 +205,6 @@ function renderTabBar() {
       tab.setAttribute('data-tooltip', snap.error);
     }
 
-    const isRemote = host.type === 'remote';
     const needsUpdate = snap.needsUpdate && snap.state === 'connected';
     const isConnecting = snap.state === 'connecting';
     const progress = snap.progress;
@@ -250,12 +249,6 @@ function renderProgress() {
   } else {
     progressBar.hidden = true;
   }
-}
-
-function stateLabel(snap) {
-  if (snap.progress?.message) return snap.progress.message;
-  const labels = { idle: '未连接', connecting: '连接中...', connected: '已连接', error: '错误' };
-  return labels[snap.state] || snap.state;
 }
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
