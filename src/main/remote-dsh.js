@@ -297,8 +297,20 @@ MANIFEST_EOF
 echo '${version}' > "$STAGE/.dsh-version" || fail "failed to write version file"
 if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is not executable at $STAGE/node_modules/.bin/dsh"; fi
 "$STAGE/node_modules/.bin/dsh" --version >"$STAGE/smoke.out" 2>"$STAGE/smoke.err" || fail "dsh --version failed: $(cat "$STAGE/smoke.err" 2>/dev/null)"
-# Atomic replacement: remove old runner, move stage into place.
-if [ -d "${DSH_REMOTE_RUNNER_DIR}" ]; then mv "${DSH_REMOTE_RUNNER_DIR}" "${DSH_REMOTE_RUNNER_DIR}.old" || fail "failed to move old runner aside"; mv "$STAGE" "${DSH_REMOTE_RUNNER_DIR}" || { mv "${DSH_REMOTE_RUNNER_DIR}.old" "${DSH_REMOTE_RUNNER_DIR}"; fail "failed to move staging into place, old runner restored"; }; rm -rf "${DSH_REMOTE_RUNNER_DIR}.old" 2>/dev/null || true; else mv "$STAGE" "${DSH_REMOTE_RUNNER_DIR}" || fail "failed to move staging into place"; fi
+# Atomic replacement: move old runner aside, move staging into place, then restore user-installed plugins from the old installation.
+	if [ -d "${DSH_REMOTE_RUNNER_DIR}" ]; then
+	  mv "${DSH_REMOTE_RUNNER_DIR}" "${DSH_REMOTE_RUNNER_DIR}.old" || fail "failed to move old runner aside"
+	  mv "$STAGE" "${DSH_REMOTE_RUNNER_DIR}" || {
+	    mv "${DSH_REMOTE_RUNNER_DIR}.old" "${DSH_REMOTE_RUNNER_DIR}"
+	    fail "failed to move staging into place, old runner restored"
+	  }
+	  if [ -d "${DSH_REMOTE_RUNNER_DIR}.old/node_modules" ]; then
+	    cp -rn "${DSH_REMOTE_RUNNER_DIR}.old/node_modules/"* "${DSH_REMOTE_RUNNER_DIR}/node_modules/" 2>/dev/null || true
+	  fi
+	  rm -rf "${DSH_REMOTE_RUNNER_DIR}.old" 2>/dev/null || true
+	else
+	  mv "$STAGE" "${DSH_REMOTE_RUNNER_DIR}" || fail "failed to move staging into place"
+	fi
 echo "done"
 `;
 
