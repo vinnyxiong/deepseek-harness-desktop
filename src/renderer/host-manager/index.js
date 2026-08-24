@@ -207,17 +207,19 @@ function renderTabBar() {
 
     const isRemote = host.type === 'remote';
     const needsUpdate = snap.needsUpdate && snap.state === 'connected';
-    const isTransferring = snap.progress?.phase === 'remote-transferring';
+    const isConnecting = snap.state === 'connecting';
+    const progress = snap.progress;
+    const showSpinner = isConnecting && progress?.phase !== 'connected';
 
     const icon = esc(host.icon || '🖥️');
     const name = esc(host.name);
-    const statusCls = snap.state === 'connecting' && !isTransferring ? 'connecting' : snap.state;
+    const statusCls = snap.state === 'connecting' && !showSpinner ? 'connecting' : snap.state;
 
     tab.innerHTML = `
       <span class="tab-icon">${icon}</span>
       <span class="tab-label">${name}</span>
       ${needsUpdate ? '<span class="tab-badge" title="远程 DSH 版本过旧"></span>' : ''}
-      ${isTransferring ? '<span class="tab-spinner" title="正在传输..."></span>' : ''}
+      ${showSpinner ? '<span class="tab-spinner" title="正在连接..."></span>' : ''}
       <span class="tab-status-dot ${statusCls}"></span>
     `;
 
@@ -239,11 +241,12 @@ function renderTabBar() {
 function renderProgress() {
   const host = hosts.find(h => h.id === selectedHostId);
   const snap = host ? (snapshots[host.id] || { state: 'idle' }) : { state: 'idle' };
-  const isTransferring = snap.progress?.phase === 'remote-transferring';
+  const progress = snap.progress;
 
-  if (isTransferring) {
+  // Show progress bar during any connection phase (except idle/connected/error)
+  if (progress && progress.phase !== 'connected') {
     progressBar.hidden = false;
-    progressBarText.textContent = snap.progress?.message || '正在传输 DSH...';
+    progressBarText.textContent = progress.message || '正在处理...';
   } else {
     progressBar.hidden = true;
   }
