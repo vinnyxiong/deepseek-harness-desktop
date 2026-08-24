@@ -387,6 +387,17 @@ async function startRemoteDsh(settings, opts = {}) {
     await runRemoteCommand(settings, `rm -f ${DSH_REMOTE_METADATA_FILE}; kill ${existing.pid} 2>/dev/null || true`, opts).catch(() => {});
   }
 
+  // Sync user-installed profile plugins into the runner node_modules so the
+  // loader can resolve them. This must happen every start, not just during
+  // transfer, because the identity check may pass (version match) and skip the
+  // transfer entirely.
+  const syncPluginsCmd = `for prof_dir in "$HOME/.dsh/profiles/"*/; do
+    if [ -d "$prof_dir/node_modules" ]; then
+      cp -rn "$prof_dir/node_modules/"* "${DSH_REMOTE_RUNNER_DIR}/node_modules/" 2>/dev/null || true
+    fi
+  done`;
+  await runRemoteCommand(settings, syncPluginsCmd, { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 }).catch(() => {});
+
   const startCmd = `mkdir -p ${DSH_REMOTE_RUNNER_DIR}; rm -f ${DSH_REMOTE_METADATA_FILE}; nohup ${DSH_REMOTE_BIN} web --port 0 > ${DSH_REMOTE_LOG_FILE} 2>&1 < /dev/null & PID=$!; for i in $(seq 1 30); do PORT=$(grep -oE 'http://127\\.0\\.0\\.1:[0-9]+' ${DSH_REMOTE_LOG_FILE} 2>/dev/null | tail -n 1 | grep -oE '[0-9]+$'); if [ -n "$PORT" ]; then printf 'PID=%s\\nPORT=%s\\n' "$PID" "$PORT" > ${DSH_REMOTE_METADATA_FILE}; echo "PID:$PID PORT:$PORT"; exit 0; fi; if ! kill -0 "$PID" 2>/dev/null; then echo "EXITED"; echo "---LOG---"; tail -n 40 ${DSH_REMOTE_LOG_FILE} 2>/dev/null; echo "---END---"; exit 1; fi; sleep 1; done; kill "$PID" 2>/dev/null; rm -f ${DSH_REMOTE_METADATA_FILE}; echo "TIMEOUT"; exit 1`;
   const { stdout } = await runRemoteCommand(settings, startCmd, { ...opts, timeoutMs: opts.timeoutMs ?? 45_000 });
 
