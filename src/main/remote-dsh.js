@@ -1,14 +1,13 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const { buildCommonSshOptions, DEFAULT_SSH_PATH } = require('./managed-ssh');
 const { createDiagnosticBuffer, terminateChild } = require('./process-utils');
 
 // Remote directory layout.
 const DSH_REMOTE_BASE_DIR = '~/.local/state/dsh';
 const DSH_REMOTE_RUNNER_DIR = `${DSH_REMOTE_BASE_DIR}/runner`;
-const DSH_REMOTE_BIN = `${DSH_REMOTE_RUNNER_DIR}/.bin/dsh`;
+const DSH_REMOTE_BIN = `${DSH_REMOTE_RUNNER_DIR}/node_modules/.bin/dsh`;
 const DSH_REMOTE_VERSION_FILE = `${DSH_REMOTE_RUNNER_DIR}/.dsh-version`;
 const DSH_REMOTE_MANIFEST_FILE = `${DSH_REMOTE_RUNNER_DIR}/.dsh-manifest.json`;
 const DSH_REMOTE_METADATA_FILE = `${DSH_REMOTE_RUNNER_DIR}/desktop-managed.env`;
@@ -289,14 +288,15 @@ fi
 if [ "sha256:$RECEIVED_DIGEST" != "${expectedDigest}" ]; then
   fail "digest mismatch: expected ${expectedDigest}, got sha256:$RECEIVED_DIGEST"
 fi
-tar xzf "$STAGE/bundle.tgz" -C "$STAGE" 2>"$STAGE/extract.err" || fail "tar extract failed: $(cat "$STAGE/extract.err" 2>/dev/null)"
+	mkdir -p "$STAGE/node_modules" || fail "failed to create node_modules dir"
+	tar xzf "$STAGE/bundle.tgz" -C "$STAGE/node_modules" 2>"$STAGE/extract.err" || fail "tar extract failed: $(cat "$STAGE/extract.err" 2>/dev/null)"
 rm -f "$STAGE/bundle.tgz" "$STAGE/extract.err"
 cat > "$STAGE/.dsh-manifest.json" <<'MANIFEST_EOF'
 ${JSON.stringify(manifest)}
 MANIFEST_EOF
 echo '${version}' > "$STAGE/.dsh-version" || fail "failed to write version file"
-if ! test -x "$STAGE/.bin/dsh"; then fail "extracted dsh binary is not executable at $STAGE/.bin/dsh"; fi
-"$STAGE/.bin/dsh" --version >"$STAGE/smoke.out" 2>"$STAGE/smoke.err" || fail "dsh --version failed: $(cat "$STAGE/smoke.err" 2>/dev/null)"
+if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is not executable at $STAGE/node_modules/.bin/dsh"; fi
+"$STAGE/node_modules/.bin/dsh" --version >"$STAGE/smoke.out" 2>"$STAGE/smoke.err" || fail "dsh --version failed: $(cat "$STAGE/smoke.err" 2>/dev/null)"
 # Atomic replacement: remove old runner, move stage into place.
 rm -rf "${DSH_REMOTE_RUNNER_DIR}" 2>/dev/null || true
 mv "$STAGE" "${DSH_REMOTE_RUNNER_DIR}" || fail "failed to move staging into place"
