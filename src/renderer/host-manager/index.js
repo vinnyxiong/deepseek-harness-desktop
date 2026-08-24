@@ -415,17 +415,6 @@ $('#cfg-icon-btn').addEventListener('click', () => {
     document.addEventListener('click', closePicker);
   }, 0);
 });
-  picker.classList.toggle('visible');
-  setTimeout(() => {
-    const closePicker = e => {
-      if (!picker.contains(e.target)) {
-        picker.classList.remove('visible');
-        document.removeEventListener('click', closePicker);
-      }
-    };
-    document.addEventListener('click', closePicker);
-  }, 0);
-});
 
 // Add host dialog
 $('#add-host-btn').addEventListener('click', () => addDialog.showModal());
