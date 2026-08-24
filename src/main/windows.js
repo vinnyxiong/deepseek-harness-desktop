@@ -21,7 +21,6 @@ function createWindowManager() {
   function showHostManager() {
     if (hostManagerWindow && !hostManagerWindow.isDestroyed()) {
       hostManagerWindow.show(); hostManagerWindow.focus();
-      hostManagerWindow.webContents.send('host:refresh');
       return hostManagerWindow;
     }
     hostManagerWindow = createSafeWindow({
