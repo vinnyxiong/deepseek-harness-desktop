@@ -246,12 +246,13 @@ function renderHostList() {
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', String(selectedHostId === host.id));
     li.innerHTML = `
-      <span class="host-item-emoji" title="点击修改图标">${esc(host.icon || '🖥️')}</span>
+      <span class="host-item-emoji">${esc(host.icon || '🖥️')}</span>
       <div class="host-item-info">
         <div class="host-item-name">${esc(host.name)}</div>
         <div class="host-item-meta">${stateLabel(snap)}${snap.endpoint ? ' · ' + new URL(snap.endpoint).port : ''}</div>
       </div>
       <span class="host-item-dot ${snap.state}"></span>
+      <span class="host-item-tooltip">${esc(host.name)} · ${stateLabel(snap)}</span>
     `;
     li.addEventListener('click', () => selectHost(host.id));
     li.addEventListener('contextmenu', e => {
@@ -470,6 +471,7 @@ function setSidebarWidth(w) {
   if (sidebarWidth <= SIDEBAR_MIN + 10) {
     sidebar.classList.add('collapsed');
     sidebar.classList.remove('hidden');
+    sidebarWidth = SIDEBAR_MIN;
   } else {
     sidebar.classList.remove('collapsed', 'hidden');
   }
@@ -487,6 +489,7 @@ dragHandle.addEventListener('dblclick', () => {
 let dragging = false;
 dragHandle.addEventListener('mousedown', e => {
   dragging = true;
+  sidebar.classList.add('dragging');
   dragHandle.classList.add('active');
   e.preventDefault();
 });
@@ -500,6 +503,7 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('mouseup', () => {
   if (!dragging) return;
   dragging = false;
+  sidebar.classList.remove('dragging');
   dragHandle.classList.remove('active');
 });
 
