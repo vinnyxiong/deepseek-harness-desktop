@@ -39,7 +39,7 @@ function sha256(filePath) {
 }
 
 function listTar(filePath) {
-  return execFileSync('tar', ['-tzf', filePath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  return execFileSync('tar', ['-tzf', filePath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 50 * 1024 * 1024 })
     .split('\n').map(s => s.trim()).filter(Boolean);
 }
 

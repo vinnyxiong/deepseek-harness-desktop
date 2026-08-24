@@ -1,0 +1,12 @@
+{
+  "schema": "dsh-remote-bundle",
+  "schemaVersion": 1,
+  "version": "0.1.0-rc.6",
+  "platform": "linux",
+  "arch": "x64",
+  "libc": "gnu",
+  "triple": "linux-x64-gnu",
+  "digest": "sha256:28404768fa22c4773f2e67a73ea31f8ef7fced7431016732556613c08caf62c9",
+  "digestAlgorithm": "sha256",
+  "createdAt": "2026-08-23T15:22:08.833Z"
+}

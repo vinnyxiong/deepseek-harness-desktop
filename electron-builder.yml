@@ -47,6 +47,9 @@ win:
   target:
     - nsis
     - portable
+  nsis:
+    oneClick: false
+    allowChangeInstallationDirectory: true
 
 linux:
   icon: build/icon-512.png
@@ -54,7 +57,3 @@ linux:
   target:
     - AppImage
     - deb
-
-nsis:
-  oneClick: false
-  allowChangeInstallationDirectory: true

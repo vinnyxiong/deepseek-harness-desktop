@@ -34,9 +34,16 @@ async function atomicWrite(path, data) {
 }
 
 export async function generateMacIcon({ projectDir = join(scriptDir, '..'), force = false, platform = process.platform, runner = run } = {}) {
-  if (platform !== 'darwin') throw new Error('macOS icon generation requires the system iconutil command');
   const buildDir = join(projectDir, 'build');
   const outputPath = join(buildDir, 'icon.icns');
+  if (platform !== 'darwin') {
+    // On non-macOS, skip if the icns file already exists (e.g. pre-built or from a previous run).
+    if (await validFile(outputPath)) {
+      console.log('macOS icon is up to date (skipped: not on macOS)');
+      return { cached: true };
+    }
+    throw new Error('macOS icon generation requires the system iconutil command');
+  }
   const metadataPath = join(buildDir, '.mac-icon.cache.json');
   const fingerprint = await fingerprintInputs(buildDir);
   const metadata = await readJson(metadataPath);
