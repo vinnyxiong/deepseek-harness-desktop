@@ -36,7 +36,9 @@
     "dist:ci:mac:arm64": "npm run build:icons:mac && npm run build:bundle:fetch && npm run verify:bundle && electron-builder --mac --arm64 --publish onTag",
     "dist:ci:linux:x64": "npm run build:icons && npm run build:bundle && npm run verify:bundle && electron-builder --config electron-builder.linux.yml --linux --x64 --publish never",
     "test": "node --test test/*.test.js",
-    "check": "node scripts/check-syntax.mjs && npm test",
+    "test:ui": "node --test test/ui-host-manager.test.js",
+    "verify:packaged-files": "node scripts/verify-packaged-files.mjs",
+    "check": "node scripts/check-syntax.mjs && npm run verify:packaged-files && npm test",
     "smoke:packaged": "node scripts/smoke-test-packaged-dsh.mjs"
   },
   "dependencies": {
@@ -66,6 +68,7 @@
   "devDependencies": {
     "electron": "^43.4.0",
     "electron-builder": "^26.15.3",
+    "jsdom": "^29.1.1",
     "png-to-ico": "^3.0.2",
     "sharp": "^0.35.3"
   }

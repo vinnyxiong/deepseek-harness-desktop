@@ -335,30 +335,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          asar="$APP_PATH/Contents/Resources/app.asar"
-          entries="$(npx asar list "$asar")"
-          required=(
-            "/src/main.js"
-            "/src/main/connection-manager.js"
-            "/src/main/dsh-health.js"
-            "/src/main/completion-watcher.js"
-            "/src/main/dsh-api-client.js"
-            "/src/main/i18n.js"
-            "/src/main/locale-service.js"
-            "/src/main/remote-dsh.js"
-            "/src/main/host-manager.js"
-            "/src/main/managed-ssh.js"
-            "/src/main/settings-store.js"
-            "/src/preload/connection-settings.js"
-            "/src/locales/en.json"
-            "/src/locales/zh.json"
-            "/src/renderer/connection-settings/index.html"
-            "/src/renderer/connection-settings/index.js"
-            "/src/renderer/connection-settings/index.css"
-          )
-          for item in "${required[@]}"; do
-            grep -Fqx "$item" <<< "$entries" || { echo "Missing packaged desktop file: $item" >&2; exit 1; }
-          done
+          node scripts/verify-packaged-files.mjs --asar "$APP_PATH/Contents/Resources/app.asar"
 
       - name: Smoke test packaged dsh
         shell: bash
