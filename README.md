@@ -30,6 +30,32 @@ Authentication is non-interactive: use `ssh-agent`, macOS Keychain, `~/.ssh/conf
 
 Local mode is the default. The App starts the bundled `dsh web --port 0`, validates the local service, and stops that child process when the App exits.
 
+### Local DSH upgrade data backup and recovery
+
+The bundled DSH version can change between App releases (for example `0.1.0-rc.6` → `0.1.1-rc.2`). Before the first launch on a new DSH version touches your local data, the App takes a one-time, atomic backup of the `.dsh` directory so an incompatible upgrade cannot silently corrupt or lose existing sessions.
+
+How it works:
+
+- The App records the active DSH version in a marker file at `<userData>/.dsh-version`.
+- On startup, before local DSH starts, the App compares the target DSH version against the marker. When they differ (any change, including downgrades), it copies `<userData>/.dsh` into `<userData>/.dsh-backups/<oldVersion>-<timestamp>/`, excluding lock, temporary, and socket artifacts.
+- The backup is written to a `.partial-<pid>` staging directory and only revealed by an atomic rename after it fully succeeds. The version marker is written atomically only after the backup completes.
+- If the backup fails, the App throws and refuses to start local DSH, leaving the marker unchanged so the next launch retries the backup. Your original `.dsh` data is never modified by this step.
+- If `.dsh` does not exist or contains no real data (fresh install, or only lock/temp files), no copy is made; the App just records the current version.
+
+To recover a previous version's data, quit the App and restore the desired snapshot from `<userData>/.dsh-backups/`:
+
+```bash
+# Locate the backups (macOS example)
+cd ~/Library/Application\ Support/DeepSeek\ Harness/.dsh-backups
+ls -1
+
+# Restore a snapshot over the current .dsh directory
+rm -rf ../.dsh
+cp -a "0.1.0-rc.6-2026-08-25T00-00-00-000Z" ../.dsh
+```
+
+The `<userData>` directory is Electron's user-data path (for example `~/Library/Application Support/DeepSeek Harness` on macOS, `%APPDATA%/DeepSeek Harness` on Windows, and `~/.config/DeepSeek Harness` on Linux). Old backups are kept until you remove them manually.
+
 ### Existing SSH tunnel
 
 The App can also load a remote DSH through a loopback port forwarded by an SSH process that you manage separately. Start DSH on the remote machine, keeping it bound to remote loopback:
