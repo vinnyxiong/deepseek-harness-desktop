@@ -6,7 +6,6 @@ const { pathToFileURL } = require('url');
 // Keep this list authoritative: windows.sendCommand refuses anything not listed here.
 const HOST_COMMANDS = new Set([
   'new-environment',
-  'environment-settings',
   'dsh-settings',
   'reconnect',
   'previous-environment',
@@ -17,13 +16,10 @@ const HOST_COMMANDS = new Set([
 
 function createWindowManager() {
   let hostManagerWindow = null;
-  let notificationSettingsWindow = null;
   let overlayUpdateCleanup = null;
 
   const hostManagerPath = path.join(__dirname, '..', 'renderer', 'host-manager', 'index.html');
   const hostManagerUrl = pathToFileURL(hostManagerPath).href;
-  const notificationPath = path.join(__dirname, '..', 'renderer', 'notification-settings', 'index.html');
-  const notificationUrl = pathToFileURL(notificationPath).href;
 
   function createSafeWindow({ title, width, height, minWidth = 480, minHeight = 480, preload, file, onClosed, refreshChannel, webviewTag = false, titleBarOverlay: useOverlay = false }) {
     const windowOptions = { title, width, height, minWidth, minHeight, show: false, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true, webviewTag } };
@@ -115,33 +111,6 @@ function createWindowManager() {
     return true;
   }
 
-  // --- Notification settings window ---
-
-  function showNotificationSettings() {
-    if (notificationSettingsWindow && !notificationSettingsWindow.isDestroyed()) {
-      notificationSettingsWindow.show();
-      notificationSettingsWindow.focus();
-      notificationSettingsWindow.webContents.send('notification:refresh');
-      return notificationSettingsWindow;
-    }
-    notificationSettingsWindow = createSafeWindow({
-      title: 'Notification Settings',
-      width: 560, height: 680,
-      minWidth: 420, minHeight: 480,
-      preload: path.join(__dirname, '..', 'preload', 'notification-settings.js'),
-      file: notificationPath,
-      onClosed: () => { notificationSettingsWindow = null; },
-      refreshChannel: 'notification:refresh',
-    });
-    return notificationSettingsWindow;
-  }
-
-  function sendNotificationLocale(locale, strings) {
-    if (notificationSettingsWindow && !notificationSettingsWindow.isDestroyed()) {
-      notificationSettingsWindow.webContents.send('notification:locale', { locale, strings });
-    }
-  }
-
   function getPlatform() {
     return process.platform;
   }
@@ -187,12 +156,8 @@ function createWindowManager() {
     focusPrimary,
     isHostManagerSender: sender => Boolean(hostManagerWindow && sender === hostManagerWindow.webContents),
     isHostManagerUrl: url => url === hostManagerUrl,
-    isNotificationSettingsSender: sender => Boolean(notificationSettingsWindow && sender === notificationSettingsWindow.webContents),
-    isNotificationSettingsUrl: url => url === notificationUrl,
     sendHostStatus,
     sendCommand,
-    showNotificationSettings,
-    sendNotificationLocale,
     getPlatform,
     registerIpc,
   };

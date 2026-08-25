@@ -1172,10 +1172,6 @@ function cycleEnvironment(delta) {
 
 const MENU_COMMANDS = {
   'new-environment': () => { if (!isBusy) addDialog.showModal(); },
-  'environment-settings': () => {
-    if (selectedHostId && hostFor(selectedHostId)) openEditDialog(selectedHostId);
-    else toast(t('placeholder.selectDesc'), 'info');
-  },
   'dsh-settings': () => { const wv = webviews.get(selectedHostId); if (wv) wv.focus?.(); else toast(t('toast.connectFirst'), 'info'); },
   'reconnect': () => { if (selectedHostId && hostFor(selectedHostId)) reconnectHost(selectedHostId); },
   'previous-environment': () => cycleEnvironment(-1),

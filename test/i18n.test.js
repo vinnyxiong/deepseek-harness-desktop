@@ -22,11 +22,6 @@ test('translates menu labels for both locales', () => {
   assert.equal(translate('en', 'menu.environment'), 'Environment');
 });
 
-test('translates notification labels', () => {
-  assert.equal(translate('en', 'notify.agent.completed'), 'Agent completed');
-  assert.equal(translate('zh', 'notify.job.failed'), '后台任务失败');
-});
-
 test('falls back to zh dictionary then key for unknown keys', () => {
   assert.equal(translate('en', 'does.not.exist'), 'does.not.exist');
 });

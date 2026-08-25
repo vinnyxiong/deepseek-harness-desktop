@@ -12,47 +12,19 @@ const { startManagedSsh } = require('./main/managed-ssh');
 const { discoverRemoteDsh, startRemoteDsh, stopRemoteDsh, getRemoteDshStatus, getRemoteDshVersion, getRemoteDshLog, getRemoteDshProcessDetails, updateRemoteDsh, getBundledDshVersion, getBundledTriple, probeRemoteHost, checkRemoteIdentity, readBundledManifest, performRemoteHealthCheck } = require('./main/remote-dsh');
 const { createHostStore } = require('./main/host-store');
 const { createWindowManager } = require('./main/windows');
-const { NotificationService } = require('./main/notification-service');
-const { createNotificationSettingsStore } = require('./main/notification-settings-store');
-const { registerNotificationIpc } = require('./main/notification-ipc');
 
-let actions, manager, windows, settings, settingsWarning, settingsStore, removeIpc, removeNotificationIpc;
-let watcher, localeService, notificationService, notificationStore, notificationSettings, notificationWarning;
+let actions, manager, windows, settings, settingsWarning, settingsStore, removeIpc;
+let watcher, localeService;
 let activeHostId = null;
 let quitAfterCleanup = false;
 app.setName('DeepSeek Harness');
 
-// Localized strings the notification-settings renderer needs to display its own UI.
-function notificationStrings(locale) {
-  const keys = ['title', 'description', 'enabled', 'agent', 'jobs', 'completed', 'failed', 'killed', 'unfocused', 'sound', 'focus', 'save', 'test', 'systemSettings', 'saved', 'sent', 'testing', 'diagShown', 'diagFailed', 'diagUnconfirmed', 'diagUnsupported'];
-  const strings = {};
-  for (const key of keys) strings[key] = translate(locale, `notifySettings.${key}`);
-  return strings;
+function dispatch(command, payload = null) {
+  try { windows?.sendCommand(command, payload); } catch (error) { console.warn('[menu] command failed:', error.message); }
 }
 
 function currentLocale() {
   return localeService?.getLocale() ?? 'zh';
-}
-
-// Restore/focus the window and switch to the host that produced the notification.
-function focusFromNotification(event) {
-  windows?.focusPrimary();
-  const hostId = event?.hostId;
-  if (hostId && manager?.getHost(hostId)) {
-    activeHostId = hostId;
-    syncIntegrations();
-    try { windows?.sendCommand('select-host', { hostId }); } catch { /* command list guards this */ }
-  }
-}
-
-function openSystemNotificationSettings() {
-  if (process.platform === 'darwin') return shell.openExternal('x-apple.systempreferences:com.apple.Notifications-Settings.extension');
-  if (process.platform === 'win32') return shell.openExternal('ms-settings:notifications');
-  return shell.openExternal('https://support.apple.com');
-}
-
-function dispatch(command, payload = null) {
-  try { windows?.sendCommand(command, payload); } catch (error) { console.warn('[menu] command failed:', error.message); }
 }
 
 function buildMenu() {
@@ -61,17 +33,11 @@ function buildMenu() {
   const dev = !app.isPackaged;
   const template = [];
 
-  const environmentSettingsItem = { label: t('menu.environmentSettings'), accelerator: 'CommandOrControl+,', click: () => dispatch('environment-settings') };
-  const notificationSettingsItem = { label: t('menu.notificationSettings'), click: () => windows?.showNotificationSettings() };
-
   if (isMac) {
     template.push({
       label: app.name,
       submenu: [
         { role: 'about', label: t('menu.about') },
-        { type: 'separator' },
-        environmentSettingsItem,
-        notificationSettingsItem,
         { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
@@ -93,9 +59,6 @@ function buildMenu() {
     { type: 'separator' },
     { label: t('menu.dshSettings'), accelerator: 'CommandOrControl+Shift+,', click: () => dispatch('dsh-settings') },
   ];
-  if (!isMac) {
-    environmentSubmenu.push({ type: 'separator' }, environmentSettingsItem, notificationSettingsItem);
-  }
   template.push({ label: t('menu.environment'), submenu: environmentSubmenu });
 
   template.push({ label: t('menu.edit'), submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] });
@@ -130,22 +93,13 @@ async function initialize() {
   ({ settings, warning: settingsWarning } = await settingsStore.load());
   settingsStore.set(settings);
 
-  notificationStore = createNotificationSettingsStore(app.getPath('userData'));
-  ({ settings: notificationSettings, warning: notificationWarning } = await notificationStore.load());
-
   windows = createWindowManager();
   actions = new ConnectionActions();
 
   localeService = new LocaleService({ systemLanguages: app.getPreferredSystemLanguages() });
 
-  notificationService = new NotificationService({
-    settings: notificationSettings,
-    getLocale: currentLocale,
-    onActivate: event => focusFromNotification(event),
-  });
-
   watcher = new CompletionWatcher({
-    onCompletion: event => notificationService.show({ ...event, hostId: activeHostId }),
+    onCompletion: () => {},
     onHostFrame: frame => localeService.handleHostFrame(frame),
   });
 
@@ -180,9 +134,8 @@ async function initialize() {
     buildMenu();
   });
 
-  localeService.on('change', locale => {
+  localeService.on('change', () => {
     buildMenu();
-    windows.sendNotificationLocale(locale, notificationStrings(locale));
   });
 
   removeIpc = registerHostIpc({
@@ -192,15 +145,6 @@ async function initialize() {
       activeHostId = hostId;
       syncIntegrations();
     },
-  });
-
-  removeNotificationIpc = registerNotificationIpc({
-    windows,
-    store: notificationStore,
-    service: notificationService,
-    getState: () => ({ settings: notificationSettings, warning: notificationWarning, locale: currentLocale(), strings: notificationStrings(currentLocale()) }),
-    setState: value => { notificationSettings = value; notificationWarning = null; },
-    openSystemSettings: openSystemNotificationSettings,
   });
 
   buildMenu();
@@ -240,12 +184,10 @@ app.on('before-quit', event => {
   event.preventDefault();
   quitAfterCleanup = true;
   removeIpc?.();
-  removeNotificationIpc?.();
   watcher?.dispose();
   localeService?.clearEndpoint();
-  notificationService?.dispose();
   void (async () => {
     await actions?.idle();
     await manager.dispose();
-  })().finally(() => app.quit());
+  })().finally(() => app.exit(0));
 });
