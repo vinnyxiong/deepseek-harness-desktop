@@ -9,22 +9,48 @@
 </head>
 <body>
   <div id="app">
-    <!-- Tab Bar (also serves as title bar drag region) -->
-    <nav id="tab-bar" class="tab-bar">
-      <div id="tab-list" class="tab-list" role="tablist"></div>
-      <button id="add-tab-btn" class="tab-add-btn" title="添加 Host">+</button>
+    <!-- Environment switcher header (also the title bar drag region) -->
+    <header id="switcher-bar" class="switcher-bar">
+      <div id="env-list" class="env-list" role="tablist" aria-label="环境切换" aria-orientation="horizontal"></div>
+      <button id="add-env-btn" class="icon-btn add-env-btn" aria-label="添加环境" title="添加环境">
+        <span aria-hidden="true">+</span>
+      </button>
       <!-- Windows/Linux: custom window controls -->
       <div id="window-controls" class="window-controls" hidden>
-        <button id="minimize-btn" class="window-btn" title="最小化">&#x2014;</button>
-        <button id="maximize-btn" class="window-btn" title="最大化">&#x25A1;</button>
-        <button id="close-btn" class="window-btn window-btn-close" title="关闭">&#x2715;</button>
+        <button id="minimize-btn" class="window-btn" aria-label="最小化" title="最小化"><span aria-hidden="true">&#x2014;</span></button>
+        <button id="maximize-btn" class="window-btn" aria-label="最大化" title="最大化"><span aria-hidden="true">&#x25A1;</span></button>
+        <button id="close-btn" class="window-btn window-btn-close" aria-label="关闭" title="关闭"><span aria-hidden="true">&#x2715;</span></button>
       </div>
-    </nav>
+    </header>
+
+    <!-- Current environment action toolbar -->
+    <div id="env-toolbar" class="env-toolbar" role="region" aria-label="当前环境操作" hidden>
+      <div class="env-summary">
+        <span id="env-summary-icon" class="env-summary-icon" aria-hidden="true">🖥️</span>
+        <div class="env-summary-text">
+          <span id="env-summary-name" class="env-summary-name">—</span>
+          <span class="env-summary-meta">
+            <span id="env-summary-type" class="env-tag">—</span>
+            <span id="env-summary-status" class="env-status"><span class="env-status-dot" aria-hidden="true"></span><span id="env-summary-status-text">—</span></span>
+          </span>
+        </div>
+      </div>
+      <div class="env-actions">
+        <button id="act-update" class="env-btn warning" hidden></button>
+        <button id="act-connect" class="env-btn primary" hidden></button>
+        <button id="act-disconnect" class="env-btn" hidden></button>
+        <button id="act-retry" class="env-btn" hidden></button>
+        <button id="act-edit" class="env-btn" hidden></button>
+        <button id="act-more" class="icon-btn env-btn-more" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作" title="更多操作">
+          <span aria-hidden="true">⋯</span>
+        </button>
+      </div>
+    </div>
 
     <!-- Main area -->
     <main id="main">
       <!-- Progress bar -->
-      <div id="progress-bar" class="install-progress" aria-live="polite" hidden>
+      <div id="progress-bar" class="install-progress" role="status" aria-live="polite" hidden>
         <div class="install-progress-inner">
           <span class="install-spinner" aria-hidden="true"></span>
           <span id="progress-bar-text">正在处理...</span>
@@ -35,68 +61,111 @@
       <div id="webview-container">
         <div id="webview-placeholder" class="webview-placeholder">
           <div class="empty-icon" aria-hidden="true">DSH</div>
-          <h3 id="placeholder-title">选择一个 Host</h3>
-          <p id="placeholder-desc">点击上方标签页选择 Host 并连接</p>
+          <h3 id="placeholder-title">选择一个环境</h3>
+          <p id="placeholder-desc">在上方切换栏选择环境并连接</p>
           <div id="placeholder-error" class="placeholder-error" hidden>
             <p id="placeholder-error-text"></p>
-            <button id="placeholder-retry-btn" class="primary">重试</button>
           </div>
+          <div id="placeholder-actions" class="placeholder-actions"></div>
         </div>
       </div>
     </main>
   </div>
 
-  <!-- Config Dialog -->
-  <dialog id="config-dialog">
-    <div class="dialog-content">
-      <h3>编辑 Host 配置</h3>
-      <div class="config-form">
-        <div class="fields" style="margin-bottom: 10px;">
-          <label><span>图标</span><div class="icon-picker-row"><span id="cfg-icon" class="cfg-icon-display">🖥️</span><button id="cfg-icon-btn" class="small">更换</button></div></label>
-          <label><span>名称</span><input id="cfg-name" type="text" maxlength="64" placeholder="我的服务器"></label>
-        </div>
-        <div id="cfg-ssh" class="fields grid" hidden>
-          <label><span>主机</span><input id="cfg-host" type="text" maxlength="253" placeholder="10.0.0.1"></label>
-          <label><span>用户</span><input id="cfg-username" type="text" maxlength="64" placeholder="root"></label>
-          <label><span>SSH 端口</span><input id="cfg-ssh-port" type="number" min="1" max="65535" value="22"></label>
-          <label><span>私钥路径 <em>可选</em></span><input id="cfg-identity-file" type="text" placeholder="/Users/name/.ssh/id_ed25519"></label>
-        </div>
-        <div id="cfg-ssh-policy" class="fields" hidden>
-          <label><span>主机密钥验证</span><select id="cfg-host-key-policy"><option value="accept-new">首次自动接受</option><option value="strict">仅已知主机</option></select></label>
-        </div>
-        <div id="cfg-startup" class="checkbox-list" hidden>
-          <label class="checkbox-label"><input id="cfg-auto-start" type="checkbox" checked><span><strong>连接时自动启动远程 DSH</strong></span></label>
-          <label class="checkbox-label"><input id="cfg-auto-stop" type="checkbox" checked><span><strong>断开时自动停止远程 DSH</strong></span></label>
-          <label class="checkbox-label"><input id="cfg-auto-install" type="checkbox" checked><span><strong>自动传输远程 DSH</strong></span></label>
-        </div>
-      </div>
-      <div class="dialog-actions">
-        <button id="save-config-btn" class="primary">保存</button>
-        <button id="cancel-config-btn">取消</button>
-      </div>
-    </div>
-  </dialog>
+  <!-- Toast region (aria-live) -->
+  <div id="toast-region" class="toast-region" role="region" aria-label="通知" aria-live="polite" aria-atomic="false"></div>
 
-  <!-- Add Host Dialog -->
-  <dialog id="add-dialog">
+  <!-- Add-type Dialog: choose local vs remote before entering the shared config form -->
+  <dialog id="add-dialog" aria-labelledby="add-dialog-title">
     <div class="dialog-content">
-      <h3>添加 Host</h3>
+      <h3 id="add-dialog-title">添加环境</h3>
+      <p class="dialog-subtitle" id="add-dialog-desc">选择要添加的环境类型</p>
       <div class="dialog-options">
         <button class="add-option" data-type="local">
           <span class="add-option-icon" aria-hidden="true">🖥️</span>
-          <span><strong>本机</strong><small>在本地启动 DSH</small></span>
+          <span class="add-option-body"><strong data-i18n="add.local.title">本机</strong><small data-i18n="add.local.desc">在本地启动 DSH</small></span>
         </button>
         <button class="add-option" data-type="remote">
           <span class="add-option-icon" aria-hidden="true">🌐</span>
-          <span><strong>远程服务器</strong><small>通过 SSH 连接远程 DSH</small></span>
+          <span class="add-option-body"><strong data-i18n="add.remote.title">远程服务器</strong><small data-i18n="add.remote.desc">通过 SSH 连接远程 DSH</small></span>
         </button>
       </div>
       <div class="dialog-actions">
-        <button id="cancel-add-btn">取消</button>
+        <button id="cancel-add-btn" data-i18n="common.cancel">取消</button>
       </div>
     </div>
   </dialog>
 
+  <!-- Config Dialog: shared draft form for add + edit -->
+  <dialog id="config-dialog" aria-labelledby="config-dialog-title">
+    <form id="config-form" class="dialog-content" method="dialog" novalidate>
+      <h3 id="config-dialog-title">环境配置</h3>
+      <div class="config-form">
+        <div class="fields" style="margin-bottom: 10px;">
+          <label><span data-i18n="field.icon">图标</span>
+            <div class="icon-picker-row">
+              <span id="cfg-icon" class="cfg-icon-display" aria-hidden="true">🖥️</span>
+              <button type="button" id="cfg-icon-btn" class="small" aria-label="更换图标" data-i18n="field.iconChange">更换图标</button>
+            </div>
+          </label>
+          <label><span data-i18n="field.name">名称</span>
+            <input id="cfg-name" type="text" maxlength="64" placeholder="我的服务器" autocomplete="off" aria-describedby="cfg-name-err">
+            <span class="field-error" id="cfg-name-err" hidden></span>
+          </label>
+        </div>
+        <div id="cfg-ssh" class="fields grid" hidden>
+          <label><span data-i18n="field.host">主机</span>
+            <input id="cfg-host" type="text" maxlength="253" placeholder="10.0.0.1" autocomplete="off" aria-describedby="cfg-host-err">
+            <span class="field-error" id="cfg-host-err" hidden></span>
+          </label>
+          <label><span data-i18n="field.username">用户</span>
+            <input id="cfg-username" type="text" maxlength="64" placeholder="root" autocomplete="off" aria-describedby="cfg-username-err">
+            <span class="field-error" id="cfg-username-err" hidden></span>
+          </label>
+          <label><span data-i18n="field.sshPort">SSH 端口</span>
+            <input id="cfg-ssh-port" type="number" min="1" max="65535" value="22" aria-describedby="cfg-ssh-port-err">
+            <span class="field-error" id="cfg-ssh-port-err" hidden></span>
+          </label>
+          <label><span><span data-i18n="field.identityFile">私钥路径</span> <em data-i18n="field.optional">可选</em></span>
+            <input id="cfg-identity-file" type="text" placeholder="/home/name/.ssh/id_ed25519" autocomplete="off" aria-describedby="cfg-identity-file-err">
+            <span class="field-error" id="cfg-identity-file-err" hidden></span>
+          </label>
+        </div>
+        <div id="cfg-ssh-policy" class="fields" hidden>
+          <label><span data-i18n="field.hostKeyPolicy">主机密钥验证</span>
+            <select id="cfg-host-key-policy">
+              <option value="accept-new" data-i18n="policy.acceptNew">首次自动接受</option>
+              <option value="strict" data-i18n="policy.strict">仅已知主机</option>
+            </select>
+          </label>
+        </div>
+        <div id="cfg-startup" class="checkbox-list" hidden>
+          <label class="checkbox-label"><input id="cfg-auto-start" type="checkbox" checked><span><strong data-i18n="opt.autoStart">连接时自动启动远程 DSH</strong></span></label>
+          <label class="checkbox-label"><input id="cfg-auto-stop" type="checkbox" checked><span><strong data-i18n="opt.autoStop">断开时自动停止远程 DSH</strong></span></label>
+          <label class="checkbox-label"><input id="cfg-auto-install" type="checkbox" checked><span><strong data-i18n="opt.autoInstall">自动传输远程 DSH</strong></span></label>
+        </div>
+      </div>
+      <p class="form-error" id="cfg-form-err" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="cancel-config-btn" data-i18n="common.cancel">取消</button>
+        <button type="submit" id="save-config-btn" class="primary" data-i18n="common.save">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Generic confirm dialog (replaces window.confirm) -->
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div class="dialog-content">
+      <h3 id="confirm-title">确认</h3>
+      <p id="confirm-message" class="confirm-message"></p>
+      <div class="dialog-actions">
+        <button type="button" id="confirm-cancel-btn" data-i18n="common.cancel">取消</button>
+        <button type="button" id="confirm-ok-btn" class="primary" data-i18n="common.confirm">确定</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="./i18n.js"></script>
   <script src="./index.js"></script>
 </body>
 </html>
