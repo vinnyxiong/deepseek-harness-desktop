@@ -297,6 +297,19 @@ MANIFEST_EOF
 echo '${version}' > "$STAGE/.dsh-version" || fail "failed to write version file"
 if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is not executable at $STAGE/node_modules/.bin/dsh"; fi
 "$STAGE/node_modules/.bin/dsh" --version >"$STAGE/smoke.out" 2>"$STAGE/smoke.err" || fail "dsh --version failed: $(cat "$STAGE/smoke.err" 2>/dev/null)"
+# Verify native modules are loadable before committing the deployment.
+# node-pty and koffi are critical native dependencies; if they can't load
+# (wrong arch, missing prebuilds, ABI mismatch), the deployment must fail
+# here rather than surfacing a cryptic error when dsh web starts.
+if ! node -e "
+  const { loadNativeModule } = require('$STAGE/node_modules/node-pty/lib/utils');
+  loadNativeModule('pty');
+  const koffi = require('$STAGE/node_modules/@koromix/koffi-linux-x64');
+  if (!koffi.version) throw new Error('koffi native module loaded but has no version');
+" 2>"$STAGE/native.err"; then
+  fail "native module smoke test failed: $(cat "$STAGE/native.err" 2>/dev/null)"
+fi
+rm -f "$STAGE/native.err"
 # Atomic replacement: move old runner aside, move staging into place, then restore user-installed plugins from the old installation.
 	if [ -d "${DSH_REMOTE_RUNNER_DIR}" ]; then
 	  mv "${DSH_REMOTE_RUNNER_DIR}" "${DSH_REMOTE_RUNNER_DIR}.old" || fail "failed to move old runner aside"
