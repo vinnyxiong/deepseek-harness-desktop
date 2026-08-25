@@ -81,6 +81,11 @@ function copyBundleFromDir(sourceDir, { force }) {
     try {
       const existing = JSON.parse(readFileSync(destManifest, 'utf8'));
       if (existing.digest === manifest.digest) {
+        // Always sync the version file to the manifest — the version file is
+        // gitignored, so a git pull that updates the manifest won't update it.
+        if (!existsSync(destVersion) || readFileSync(destVersion, 'utf8').trim() !== manifest.version) {
+          writeFileSync(destVersion, `${manifest.version}\n`);
+        }
         console.log(`${BUNDLE} is up to date (${manifest.triple}, version ${manifest.version})`);
         return { cached: true, manifest };
       }
