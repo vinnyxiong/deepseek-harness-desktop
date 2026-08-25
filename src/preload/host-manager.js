@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld('desktopHosts', Object.freeze({
     ipcRenderer.on('host:status', listener);
     return () => ipcRenderer.removeListener('host:status', listener);
   },
+  // Menu-dispatched commands from the main process. Payload is { command, payload }.
+  onCommand(callback) {
+    const listener = (_event, message) => callback(message);
+    ipcRenderer.on('host:command', listener);
+    return () => ipcRenderer.removeListener('host:command', listener);
+  },
   // Window controls (Windows/Linux frameless)
   windowMinimize: () => ipcRenderer.send('window:minimize'),
   windowMaximize: () => ipcRenderer.send('window:maximize'),
