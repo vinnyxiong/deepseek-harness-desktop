@@ -15,6 +15,9 @@
       <button id="add-env-btn" class="icon-btn add-env-btn" aria-label="添加环境" title="添加环境">
         <span aria-hidden="true">+</span>
       </button>
+      <button id="more-btn" class="icon-btn" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作" title="更多操作">
+        <span aria-hidden="true">⋯</span>
+      </button>
       <!-- Windows/Linux: custom window controls -->
       <div id="window-controls" class="window-controls" hidden>
         <button id="minimize-btn" class="window-btn" aria-label="最小化" title="最小化"><span aria-hidden="true">&#x2014;</span></button>
@@ -22,30 +25,6 @@
         <button id="close-btn" class="window-btn window-btn-close" aria-label="关闭" title="关闭"><span aria-hidden="true">&#x2715;</span></button>
       </div>
     </header>
-
-    <!-- Current environment action toolbar -->
-    <div id="env-toolbar" class="env-toolbar" role="region" aria-label="当前环境操作" hidden>
-      <div class="env-summary">
-        <span id="env-summary-icon" class="env-summary-icon" aria-hidden="true">🖥️</span>
-        <div class="env-summary-text">
-          <span id="env-summary-name" class="env-summary-name">—</span>
-          <span class="env-summary-meta">
-            <span id="env-summary-type" class="env-tag">—</span>
-            <span id="env-summary-status" class="env-status"><span class="env-status-dot" aria-hidden="true"></span><span id="env-summary-status-text">—</span></span>
-          </span>
-        </div>
-      </div>
-      <div class="env-actions">
-        <button id="act-update" class="env-btn warning" aria-label="更新远程 DSH" hidden></button>
-        <button id="act-connect" class="env-btn primary" aria-label="连接" hidden></button>
-        <button id="act-disconnect" class="env-btn" aria-label="断开" hidden></button>
-        <button id="act-retry" class="env-btn" aria-label="重试" hidden></button>
-        <button id="act-edit" class="env-btn" aria-label="编辑配置" hidden></button>
-        <button id="act-more" class="icon-btn env-btn-more" aria-haspopup="menu" aria-expanded="false" aria-label="更多操作" title="更多操作">
-          <span aria-hidden="true">⋯</span>
-        </button>
-      </div>
-    </div>
 
     <!-- Main area -->
     <main id="main">

@@ -45,7 +45,12 @@ function createWindowManager() {
     const window = new BrowserWindow(windowOptions);
     window.removeMenu?.();
     window.once('ready-to-show', () => window.show());
-    window.on('closed', onClosed);
+    window.on('close', e => {
+      // On macOS, closing the window is not quitting — hide instead of destroy so
+      // the user can restore the window without a full reload of renderer + webview.
+      if (process.platform === 'darwin') { e.preventDefault(); window.hide(); return; }
+      onClosed();
+    });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', event => event.preventDefault());
     if (refreshChannel) window.webContents.on('did-finish-load', () => window.webContents.send(refreshChannel));

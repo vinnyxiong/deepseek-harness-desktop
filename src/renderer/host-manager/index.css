@@ -241,49 +241,6 @@ body[data-platform="linux"] .switcher-bar { padding-left: 8px; padding-right: 8p
 .window-btn-close:hover { background: var(--danger); color: #fff; }
 
 /* =============================================
-   Environment action toolbar
-   ============================================= */
-
-.env-toolbar {
-  display: flex; align-items: center; gap: 12px;
-  padding: 6px 12px;
-  min-height: 44px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-}
-.env-toolbar[hidden] { display: none; }
-
-.env-summary { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
-.env-summary-icon { font-size: 20px; line-height: 1; flex-shrink: 0; }
-.env-summary-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.env-summary-name {
-  font-size: var(--fs-strong); font-weight: 700; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.env-summary-meta { display: flex; align-items: center; gap: 8px; }
-
-.env-tag {
-  font-size: 11px; font-weight: 600; color: var(--text-muted);
-  padding: 1px 7px; border-radius: 999px;
-  border: 1px solid var(--line-strong); background: var(--surface-muted);
-  white-space: nowrap;
-}
-
-.env-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-muted); }
-.env-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); flex-shrink: 0; }
-.env-status.connected .env-status-dot { background: var(--success); }
-.env-status.connected { color: var(--success); }
-.env-status.error .env-status-dot { background: var(--danger); }
-.env-status.error { color: var(--danger); }
-.env-status.connecting .env-status-dot { background: var(--warning); animation: pulse 1.2s ease-in-out infinite; }
-.env-status.connecting { color: var(--warning); }
-
-.env-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.env-btn[hidden] { display: none; }
-.env-btn-more { font-size: 18px; }
-
-/* =============================================
    Main area
    ============================================= */
 

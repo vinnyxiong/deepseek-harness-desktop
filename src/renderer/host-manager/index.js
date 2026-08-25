@@ -27,19 +27,7 @@ const switcherBar = $('#switcher-bar');
 const envList = $('#env-list');
 const addEnvBtn = $('#add-env-btn');
 
-const envToolbar = $('#env-toolbar');
-const sumIcon = $('#env-summary-icon');
-const sumName = $('#env-summary-name');
-const sumType = $('#env-summary-type');
-const sumStatus = $('#env-summary-status');
-const sumStatusText = $('#env-summary-status-text');
-const actUpdate = $('#act-update');
-const actConnect = $('#act-connect');
-const actDisconnect = $('#act-disconnect');
-const actRetry = $('#act-retry');
-const actEdit = $('#act-edit');
-const actMore = $('#act-more');
-const toolbarButtons = [actUpdate, actConnect, actDisconnect, actRetry, actEdit, actMore];
+const moreBtn = $('#more-btn');
 
 const progressBar = $('#progress-bar');
 const progressBarText = $('#progress-bar-text');
@@ -152,11 +140,10 @@ function applyStaticI18n() {
   });
 
   envList.setAttribute('aria-label', t('a11y.switcher'));
-  envToolbar.setAttribute('aria-label', t('a11y.envActions'));
   toastRegion.setAttribute('aria-label', i18n.lang === 'zh' ? '通知' : 'Notifications');
 
   setLabel(addEnvBtn, t('a11y.addEnv'));
-  setLabel(actMore, t('action.more'));
+  setLabel(moreBtn, t('action.more'));
 
   cfgName.placeholder = t('field.namePlaceholder');
   cfgHost.placeholder = t('field.hostPlaceholder');
@@ -279,9 +266,7 @@ function confirmDialogAsync({ title, message, confirmLabel, danger = false }) {
 
 function updateBusyUI() {
   addEnvBtn.disabled = isBusy;
-  for (const btn of toolbarButtons) {
-    if (!btn.hidden) btn.disabled = isBusy;
-  }
+  moreBtn.disabled = isBusy;
 }
 
 async function runAction(fn, { successMsg, errorMsg } = {}) {
@@ -557,58 +542,6 @@ function applyCompactSwitcher() {
 
 // --- Toolbar rendering ---
 
-function renderToolbar() {
-  const host = hostFor(selectedHostId);
-  if (!host) {
-    envToolbar.hidden = true;
-    return;
-  }
-  envToolbar.hidden = false;
-
-  const snap = snapFor(host.id);
-  const state = snap.state || 'idle';
-
-  sumIcon.textContent = host.icon || '🖥️';
-  sumName.textContent = host.name;
-  sumName.title = host.name;
-  sumType.textContent = typeLabel(host);
-  sumStatus.className = `env-status ${state}`;
-  sumStatusText.textContent = statusLabel(state);
-
-  const connected = state === 'connected';
-  const connecting = isPointerConnecting(snap);
-  const errored = state === 'error';
-  const idle = state === 'idle';
-
-  setActionButton(actConnect, idle, t('action.connect'), () => connectHost(host.id));
-  setActionButton(actDisconnect, connected, t('action.disconnect'), () => disconnectHost(host.id));
-  setActionButton(actRetry, errored, t('action.retry'), () => connectHost(host.id));
-  setActionButton(actEdit, true, t('action.edit'), () => openEditDialog(host.id));
-
-  const showUpdate = connected && snap.needsUpdate;
-  setActionButton(actUpdate, showUpdate, t('update.available'), () => updateRemoteFlow(host.id));
-  if (showUpdate) actUpdate.title = t('update.tooltip');
-
-  // "More" is always available.
-  actMore.hidden = false;
-
-  // Nothing actionable while connecting (progress bar communicates).
-  if (connecting) {
-    actConnect.hidden = true;
-    actRetry.hidden = true;
-  }
-
-  updateBusyUI();
-}
-
-function setActionButton(btn, visible, label, onClick) {
-  btn.hidden = !visible;
-  if (!visible) return;
-  btn.textContent = label;
-  btn.title = label;
-  btn.onclick = onClick;
-}
-
 // --- Progress bar ---
 
 function renderProgress() {
@@ -627,7 +560,6 @@ function renderProgress() {
 
 function renderAll() {
   renderSwitcher();
-  renderToolbar();
   renderProgress();
   showWebview(selectedHostId);
 }
@@ -914,14 +846,14 @@ function onMenuKeydown(e) {
   }
 }
 
-actMore.addEventListener('click', () => {
+moreBtn.addEventListener('click', () => {
   if (menuEl && menuEl.classList.contains('visible')) { closeMenu(true); return; }
   if (!selectedHostId) return;
-  openMenu(buildMenuItems(selectedHostId), { trigger: actMore });
+  openMenu(buildMenuItems(selectedHostId), { trigger: moreBtn });
 });
 
 document.addEventListener('mousedown', e => {
-  if (menuEl && menuEl.classList.contains('visible') && !menuEl.contains(e.target) && e.target !== actMore) {
+  if (menuEl && menuEl.classList.contains('visible') && !menuEl.contains(e.target) && e.target !== moreBtn) {
     closeMenu(false);
   }
 });
@@ -974,7 +906,7 @@ function openAddDialogForType(type) {
 
 function openEditDialog(hostId) {
   const host = hostFor(hostId);
-  if (!host) return;
+  if (!host) { toast(t('placeholder.selectDesc'), 'info'); return; }
   selectHost(hostId);
   const type = host.type;
   configDraft = { mode: 'edit', type, hostId };
@@ -1240,7 +1172,10 @@ function cycleEnvironment(delta) {
 
 const MENU_COMMANDS = {
   'new-environment': () => { if (!isBusy) addDialog.showModal(); },
-  'environment-settings': () => { if (selectedHostId && hostFor(selectedHostId)) openEditDialog(selectedHostId); },
+  'environment-settings': () => {
+    if (selectedHostId && hostFor(selectedHostId)) openEditDialog(selectedHostId);
+    else toast(t('placeholder.selectDesc'), 'info');
+  },
   'dsh-settings': () => { const wv = webviews.get(selectedHostId); if (wv) wv.focus?.(); else toast(t('toast.connectFirst'), 'info'); },
   'reconnect': () => { if (selectedHostId && hostFor(selectedHostId)) reconnectHost(selectedHostId); },
   'previous-environment': () => cycleEnvironment(-1),
