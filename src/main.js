@@ -2,6 +2,7 @@ const { app, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 const { CompletionWatcher } = require('./main/completion-watcher');
 const { ConnectionActions } = require('./main/connection-actions');
+const { guardDshData } = require('./main/dsh-data-guard');
 const { HostManager } = require('./main/host-manager');
 const { translate } = require('./main/i18n');
 const { registerHostIpc } = require('./main/ipc');
@@ -149,13 +150,20 @@ async function initialize() {
   });
 
   manager = new HostManager({
-    startLocal: onUnexpectedExit => startLocalDsh({
-      executablePath: process.execPath,
-      resourcesPath: process.resourcesPath,
-      isPackaged: app.isPackaged,
-      dshHome: path.join(app.getPath('userData'), '.dsh'),
-      onUnexpectedExit,
-    }),
+    startLocal: async onUnexpectedExit => {
+      const userData = app.getPath('userData');
+      // Protect existing local DSH data with a one-time atomic backup before
+      // any DSH version change touches it. A backup failure throws and blocks
+      // local DSH startup.
+      await guardDshData({ userDataPath: userData, dshHome: path.join(userData, '.dsh') });
+      return startLocalDsh({
+        executablePath: process.execPath,
+        resourcesPath: process.resourcesPath,
+        isPackaged: app.isPackaged,
+        dshHome: path.join(userData, '.dsh'),
+        onUnexpectedExit,
+      });
+    },
     startManagedSsh: (managedSettings, onUnexpectedExit, remotePort) => startManagedSsh({
       settings: managedSettings,
       onUnexpectedExit,
