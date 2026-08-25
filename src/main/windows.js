@@ -2,12 +2,28 @@ const { BrowserWindow, nativeTheme } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
+// Commands the main-process menu is allowed to dispatch to the host manager renderer.
+// Keep this list authoritative: windows.sendCommand refuses anything not listed here.
+const HOST_COMMANDS = new Set([
+  'new-environment',
+  'environment-settings',
+  'dsh-settings',
+  'reconnect',
+  'previous-environment',
+  'next-environment',
+  'refresh-webview',
+  'select-host',
+]);
+
 function createWindowManager() {
   let hostManagerWindow = null;
+  let notificationSettingsWindow = null;
   let overlayUpdateCleanup = null;
 
   const hostManagerPath = path.join(__dirname, '..', 'renderer', 'host-manager', 'index.html');
   const hostManagerUrl = pathToFileURL(hostManagerPath).href;
+  const notificationPath = path.join(__dirname, '..', 'renderer', 'notification-settings', 'index.html');
+  const notificationUrl = pathToFileURL(notificationPath).href;
 
   function createSafeWindow({ title, width, height, minWidth = 480, minHeight = 480, preload, file, onClosed, refreshChannel, webviewTag = false, titleBarOverlay: useOverlay = false }) {
     const windowOptions = { title, width, height, minWidth, minHeight, show: false, webPreferences: { preload, nodeIntegration: false, contextIsolation: true, sandbox: true, webviewTag } };
@@ -85,6 +101,42 @@ function createWindowManager() {
     }
   }
 
+  // Dispatch a menu-triggered command to the host manager renderer over a fixed,
+  // allow-listed channel. Returns false if the command is unknown or the window is gone.
+  function sendCommand(command, payload = null) {
+    if (!HOST_COMMANDS.has(command)) throw new Error(`Unknown host command: ${command}`);
+    if (!hostManagerWindow || hostManagerWindow.isDestroyed()) return false;
+    hostManagerWindow.webContents.send('host:command', { command, payload });
+    return true;
+  }
+
+  // --- Notification settings window ---
+
+  function showNotificationSettings() {
+    if (notificationSettingsWindow && !notificationSettingsWindow.isDestroyed()) {
+      notificationSettingsWindow.show();
+      notificationSettingsWindow.focus();
+      notificationSettingsWindow.webContents.send('notification:refresh');
+      return notificationSettingsWindow;
+    }
+    notificationSettingsWindow = createSafeWindow({
+      title: 'Notification Settings',
+      width: 560, height: 680,
+      minWidth: 420, minHeight: 480,
+      preload: path.join(__dirname, '..', 'preload', 'notification-settings.js'),
+      file: notificationPath,
+      onClosed: () => { notificationSettingsWindow = null; },
+      refreshChannel: 'notification:refresh',
+    });
+    return notificationSettingsWindow;
+  }
+
+  function sendNotificationLocale(locale, strings) {
+    if (notificationSettingsWindow && !notificationSettingsWindow.isDestroyed()) {
+      notificationSettingsWindow.webContents.send('notification:locale', { locale, strings });
+    }
+  }
+
   function getPlatform() {
     return process.platform;
   }
@@ -130,10 +182,15 @@ function createWindowManager() {
     focusPrimary,
     isHostManagerSender: sender => Boolean(hostManagerWindow && sender === hostManagerWindow.webContents),
     isHostManagerUrl: url => url === hostManagerUrl,
+    isNotificationSettingsSender: sender => Boolean(notificationSettingsWindow && sender === notificationSettingsWindow.webContents),
+    isNotificationSettingsUrl: url => url === notificationUrl,
     sendHostStatus,
+    sendCommand,
+    showNotificationSettings,
+    sendNotificationLocale,
     getPlatform,
     registerIpc,
   };
 }
 
-module.exports = { createWindowManager };
+module.exports = { createWindowManager, HOST_COMMANDS };
