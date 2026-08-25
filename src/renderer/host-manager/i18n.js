@@ -122,6 +122,7 @@
       'toast.connectFailed': '连接失败：{msg}',
       'toast.refreshFailed': '刷新失败：{msg}',
       'toast.busy': '正在处理，请稍候…',
+      'toast.connectFirst': '请先连接当前环境',
 
       // Placeholder / recovery
       'placeholder.selectTitle': '选择一个环境',
@@ -249,6 +250,7 @@
       'toast.connectFailed': 'Connection failed: {msg}',
       'toast.refreshFailed': 'Refresh failed: {msg}',
       'toast.busy': 'Working, please wait…',
+      'toast.connectFirst': 'Connect this environment first',
 
       'placeholder.selectTitle': 'Select an environment',
       'placeholder.selectDesc': 'Pick an environment from the switcher above and connect',

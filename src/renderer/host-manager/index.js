@@ -1227,6 +1227,35 @@ api.onStatus((hostId, snapshot) => {
 
 api.onRefresh(() => refresh());
 
+// --- Application menu commands (main process dispatches over host:command) ---
+
+function cycleEnvironment(delta) {
+  if (!hosts.length) return;
+  const idx = hosts.findIndex(h => h.id === selectedHostId);
+  const base = idx < 0 ? 0 : idx;
+  const next = (base + delta + hosts.length) % hosts.length;
+  selectHost(hosts[next].id);
+  focusActiveTab();
+}
+
+const MENU_COMMANDS = {
+  'new-environment': () => { if (!isBusy) addDialog.showModal(); },
+  'environment-settings': () => { if (selectedHostId && hostFor(selectedHostId)) openEditDialog(selectedHostId); },
+  'dsh-settings': () => { const wv = webviews.get(selectedHostId); if (wv) wv.focus?.(); else toast(t('toast.connectFirst'), 'info'); },
+  'reconnect': () => { if (selectedHostId && hostFor(selectedHostId)) reconnectHost(selectedHostId); },
+  'previous-environment': () => cycleEnvironment(-1),
+  'next-environment': () => cycleEnvironment(1),
+  'refresh-webview': () => { if (selectedHostId) reloadWebview(selectedHostId); },
+  'select-host': payload => { const id = payload && payload.hostId; if (id && hostFor(id)) selectHost(id); },
+};
+
+if (typeof api.onCommand === 'function') {
+  api.onCommand((command, payload) => {
+    const handler = MENU_COMMANDS[command];
+    if (handler) handler(payload);
+  });
+}
+
 window.addEventListener('resize', applyCompactSwitcher);
 
 // --- Init ---

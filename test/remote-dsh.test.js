@@ -233,11 +233,11 @@ test('discoverRemoteDsh rejects output with non-numeric metadata', async () => {
 // --- startRemoteDsh ---
 
 test('startRemoteDsh starts a new process with dynamic port and performs health check', async () => {
-  // Sequence: checkRemoteIdentity (missing) -> transfer (skipped due to autoInstall false? No, with autoInstall default true)
-  // For simplicity test with autoInstall=false (probe -> discover (not running) -> start -> health check)
+  // Sequence (autoInstall false): probe -> discover (not running) -> sync plugins -> start -> health check
   const spawn = spawnWithSequence([
     { stdout: 'PLATFORM:linux\nARCH:x64\nLIBC:gnu\nTRIPLE:linux-x64-gnu' }, // probe
     { stdout: 'STOPPED' }, // discover
+    { stdout: '' }, // sync user-installed profile plugins
     { stdout: 'PID:9999 PORT:56789' }, // start
     { stdout: 'HEALTHY' }, // health check
   ]);
@@ -250,6 +250,7 @@ test('startRemoteDsh throws on early exit', async () => {
   const spawn = spawnWithSequence([
     { stdout: 'PLATFORM:linux\nARCH:x64\nLIBC:gnu\nTRIPLE:linux-x64-gnu' },
     { stdout: 'STOPPED' },
+    { stdout: '' }, // sync plugins
     { stdout: 'EXITED' },
   ]);
   await assert.rejects(
@@ -262,6 +263,7 @@ test('startRemoteDsh throws on timeout', async () => {
   const spawn = spawnWithSequence([
     { stdout: 'PLATFORM:linux\nARCH:x64\nLIBC:gnu\nTRIPLE:linux-x64-gnu' },
     { stdout: 'STOPPED' },
+    { stdout: '' }, // sync plugins
     { stdout: 'TIMEOUT' },
   ]);
   await assert.rejects(
