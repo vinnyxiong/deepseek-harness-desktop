@@ -207,6 +207,13 @@ async function checkRemoteIdentity(settings, opts = {}) {
   if (manifest.version !== bundledVersion) {
     return { ok: false, reason: 'mismatch', detail: `Remote version ${manifest.version} does not match bundled ${bundledVersion}` };
   }
+  // Compare bundle digest to detect redeployments after bundle rebuild.
+  // Without this, a runner with the same version/triple but different
+  // native module versions (e.g. after a dependency upgrade) is reused.
+  const bundledManifest = readBundledManifest();
+  if (bundledManifest?.digest && manifest.digest !== bundledManifest.digest) {
+    return { ok: false, reason: 'mismatch', detail: `Remote bundle digest ${manifest.digest} does not match bundled ${bundledManifest.digest}` };
+  }
   // Verify version file also matches (defense in depth).
   const versionCheckCmd = `if test -f ${DSH_REMOTE_VERSION_FILE} && grep -qFx '${bundledVersion}' ${DSH_REMOTE_VERSION_FILE}; then echo V_OK; else echo V_MISMATCH; fi`;
   const { stdout: vOut } = await runRemoteCommand(settings, versionCheckCmd, { ...opts, timeoutMs: opts.timeoutMs ?? 10_000 });
