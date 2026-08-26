@@ -301,9 +301,9 @@ if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is 
 # node-pty and koffi are critical native dependencies; if they can't load
 # (wrong arch, missing prebuilds, ABI mismatch), the deployment must fail
 # here rather than surfacing a cryptic error when dsh web starts.
+# Use absolute paths to avoid ambiguous relative resolution in node -e context.
 if ! node -e "
-  const { loadNativeModule } = require('$STAGE/node_modules/node-pty/lib/utils');
-  loadNativeModule('pty');
+  require('$STAGE/node_modules/node-pty/prebuilds/linux-x64/pty.node');
   const koffi = require('$STAGE/node_modules/@koromix/koffi-linux-x64');
   if (!koffi.version) throw new Error('koffi native module loaded but has no version');
 " 2>"$STAGE/native.err"; then
