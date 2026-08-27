@@ -6,14 +6,18 @@
 //   - manifest digest matches the tarball's sha256
 //   - dsh-bundle.version matches manifest.version
 //   - tarball contains the expected dsh entry points and no AppleDouble files
+//   - tarball contains the linux-x64 native modules dsh needs at runtime
 //
 // Exits non-zero with a descriptive message on failure.
 
 import { createHash } from 'node:crypto';
 import { existsSync, openSync, readSync, closeSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+const { inspectBundleNatives } = createRequire(import.meta.url)('./build-dsh-bundle.cjs');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -98,5 +102,17 @@ const bad = entries.filter(e => {
   return base.startsWith('._') || base === '.DS_Store';
 });
 if (bad.length > 0) fail(`tarball contains excluded files (AppleDouble/.DS_Store): ${bad.slice(0, 5).join(', ')}`);
+
+// The manifest only claims a triple; the tarball has to actually back it up.
+// `dsh --version` never touches node-pty or koffi, so a bundle built on the
+// wrong host passes every other check here and only fails once `dsh web` runs.
+const { missing, foreign } = inspectBundleNatives(entries);
+if (missing.length > 0) {
+  fail(`tarball is missing ${EXPECTED_TRIPLE} native modules: ${missing.join(', ')}`);
+}
+if (foreign.length > 0) {
+  const packages = [...new Set(foreign.map(e => e.split('/').slice(0, 2).join('/')))];
+  fail(`tarball contains native packages for another platform (built on the wrong host?): ${packages.join(', ')}`);
+}
 
 console.log(`bundle verified: ${manifest.triple} v${manifest.version}, ${(st.size / 1024 / 1024).toFixed(1)} MB, digest ${manifest.digest.slice(0, 20)}...`);

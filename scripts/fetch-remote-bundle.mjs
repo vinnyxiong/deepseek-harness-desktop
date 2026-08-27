@@ -13,9 +13,12 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, copyFileSync, writeFileSync, mkdirSync, openSync, readSync, closeSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+const { assertBundleNatives } = createRequire(import.meta.url)('./build-dsh-bundle.cjs');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -63,12 +66,19 @@ function copyBundleFromDir(sourceDir, { force }) {
     throw new Error(`Refusing to embed bundle for triple ${manifest.triple}; expected linux-x64-gnu`);
   }
 
+  // The manifest is just a label: a stale tarball left in the source directory
+  // (say, one built on this macOS host before the build-host guard existed)
+  // still claims linux-x64-gnu and would be embedded, digest and all. Check the
+  // tarball itself for the linux native modules before trusting it.
+  assertBundleNatives(srcBundle);
+
   // Verify digest matches the file. When the user explicitly provides a local
   // bundle (DSH_BUNDLE_DIR or --from), auto-correct the manifest if the digest
   // doesn't match — the bundle file is the source of truth.
   const digest = `sha256:${sha256(srcBundle)}`;
   if (digest !== manifest.digest) {
     console.warn(`Bundle digest mismatch: file is ${digest}, manifest says ${manifest.digest}. Updating manifest.`);
+    console.warn('(The tarball wins. It passed the linux-x64-gnu native module check above.)');
     manifest.digest = digest;
     writeFileSync(srcManifest, `${JSON.stringify(manifest, null, 2)}\n`);
   }

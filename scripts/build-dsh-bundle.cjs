@@ -14,7 +14,7 @@ const {
 const { basename, join, relative, resolve, sep } = require('node:path');
 
 const root = resolve(__dirname, '..');
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const MANIFEST_SCHEMA = 'dsh-remote-bundle';
 const MANIFEST_SCHEMA_VERSION = 1;
 const TARGET_PLATFORM = 'linux';
@@ -37,6 +37,70 @@ const EXCLUDE = new Set([
 
 const EXCLUDE_PREFIXES = ['._'];
 const EXCLUDE_NAMES = new Set(['.DS_Store']);
+
+// Native modules that MUST be present inside a linux-x64-gnu bundle.
+// A bundle built on macOS/Windows -- or one whose prebuilds were pruned by
+// @electron/rebuild -- still extracts cleanly and still passes `dsh --version`,
+// because the CLI only touches these modules once `dsh web` boots the loader.
+// Assert their presence here so a mislabelled bundle can never be shipped.
+const REQUIRED_NATIVE_ENTRIES = Object.freeze([
+  'node-pty/prebuilds/linux-x64/pty.node',
+  '@koromix/koffi-linux-x64/linux_x64/koffi.node',
+]);
+
+// Entries that prove the bundle was produced on a non-Linux host. koffi resolves
+// its binary through the optional dependency matching the *install* platform, so
+// a darwin/win32 koffi package inside a "linux" bundle is a build-host mistake.
+const FOREIGN_NATIVE_PATTERNS = Object.freeze([
+  /^@koromix\/koffi-(darwin|win32|freebsd|openbsd)-/,
+]);
+
+function normalizeTarEntry(entry) {
+  return entry.trim().replace(/^\.\//, '').replace(/\/+$/, '');
+}
+
+function listTarEntries(path, exec = execFileSync) {
+  const output = exec('tar', ['-tzf', path], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return output.split('\n').map(normalizeTarEntry).filter(Boolean);
+}
+
+// Returns { missing, foreign } for a list of tar entries.
+function inspectBundleNatives(entries) {
+  const set = new Set(entries.map(normalizeTarEntry));
+  const missing = REQUIRED_NATIVE_ENTRIES.filter(required => !set.has(required));
+  const foreign = [...set].filter(entry => FOREIGN_NATIVE_PATTERNS.some(re => re.test(entry)));
+  return { missing, foreign };
+}
+
+// Throws when the tarball does not look like a usable linux-x64-gnu runner.
+function assertBundleNatives(path, exec = execFileSync) {
+  const { missing, foreign } = inspectBundleNatives(listTarEntries(path, exec));
+  if (missing.length === 0 && foreign.length === 0) return;
+  const lines = [`bundle is not a usable ${TARGET_TRIPLE} runner:`];
+  for (const entry of missing) lines.push(`  - missing native module: ${entry}`);
+  for (const entry of [...new Set(foreign.map(e => e.split('/').slice(0, 2).join('/')))]) {
+    lines.push(`  - foreign native package for another platform: ${entry}`);
+  }
+  lines.push('', 'The bundle must be built by npm run build:bundle on a Linux x64 glibc host.');
+  const error = new Error(lines.join('\n'));
+  error.code = 'INVALID_BUNDLE_CONTENTS';
+  error.missing = missing;
+  error.foreign = foreign;
+  throw error;
+}
+
+// Non-throwing variant used to invalidate a cached bundle that predates the
+// native-module assertion.
+function hasBundleNatives(path, exec = execFileSync) {
+  try {
+    assertBundleNatives(path, exec);
+    return true;
+  } catch { return false; }
+}
 
 function isExcluded(relPath) {
   const parts = relPath.split(sep);
@@ -202,7 +266,8 @@ function buildBundle({ projectRoot = root, force = false, exec = execFileSync, d
     if (existingManifest
         && existingManifest.triple === TARGET_TRIPLE
         && existingManifest.digest === `sha256:${sha256File(output)}`
-        && validateBundle(output, exec)) {
+        && validateBundle(output, exec)
+        && hasBundleNatives(output, exec)) {
       cacheHit = true;
     }
   }
@@ -223,6 +288,10 @@ function buildBundle({ projectRoot = root, force = false, exec = execFileSync, d
   try {
     exec('tar', ['-czf', temp, '-C', modules, ...tarExcludes, '.'], { stdio: 'inherit' });
     if (!validateBundle(temp, exec)) throw new Error('generated bundle failed validation');
+    // node_modules on this host may itself be missing the linux prebuilds (for
+    // example after @electron/rebuild replaced them); refuse to publish such a
+    // bundle instead of letting it fail hours later on the remote host.
+    assertBundleNatives(temp, exec);
 
     const digest = sha256File(temp);
     const manifest = buildManifest({ version, digest });
@@ -246,23 +315,30 @@ function buildBundle({ projectRoot = root, force = false, exec = execFileSync, d
 }
 
 module.exports = {
+  FOREIGN_NATIVE_PATTERNS,
   MANIFEST_NAME,
   MANIFEST_SCHEMA,
   MANIFEST_SCHEMA_VERSION,
   METADATA_NAME,
   OUTPUT_NAME,
+  REQUIRED_NATIVE_ENTRIES,
   TARGET_ARCH,
   TARGET_LIBC,
   TARGET_PLATFORM,
   TARGET_TRIPLE,
   VERSION_NAME,
+  assertBundleNatives,
   atomicWrite,
   buildBundle,
   buildManifest,
   contentFingerprint,
   detectBuildHost,
+  hasBundleNatives,
+  inspectBundleNatives,
   isExcluded,
   listInputs,
+  listTarEntries,
+  normalizeTarEntry,
   readMetadata,
   sha256File,
   validateBuildHost,
@@ -275,7 +351,8 @@ if (require.main === module) {
   try {
     buildBundle({ force });
   } catch (err) {
-    console.error(err.code === 'UNSUPPORTED_BUILD_HOST' ? err.message : err.stack || err.message);
+    const known = err.code === 'UNSUPPORTED_BUILD_HOST' || err.code === 'INVALID_BUNDLE_CONTENTS';
+    console.error(known ? err.message : err.stack || err.message);
     process.exit(1);
   }
 }

@@ -6,8 +6,9 @@ const { join } = require('node:path');
 const {
   buildBundle, contentFingerprint, validateBundle,
   isExcluded, detectBuildHost, validateBuildHost, buildManifest,
+  inspectBundleNatives, normalizeTarEntry,
   TARGET_TRIPLE, TARGET_PLATFORM, TARGET_ARCH, TARGET_LIBC,
-  MANIFEST_SCHEMA, MANIFEST_SCHEMA_VERSION,
+  MANIFEST_SCHEMA, MANIFEST_SCHEMA_VERSION, REQUIRED_NATIVE_ENTRIES,
 } = require('../scripts/build-dsh-bundle.cjs');
 
 function fixture() {
@@ -24,13 +25,17 @@ function fixture() {
 // Fake tar that writes a small gzip-compatible archive (we only need it to
 // exist and pass `tar -tzf` validation in real tests; for unit tests we stub
 // validateBundle too).
-function fakeTar(calls, fail = false) {
+function fakeTar(calls, fail = false, entries = REQUIRED_NATIVE_ENTRIES) {
   return (command, args) => {
     calls.push([command, ...args]);
     if (args[0] === '-czf') {
       writeFileSync(args[1], 'archive');
       if (fail) throw new Error('tar failed');
     }
+    // `tar -tzf` is used both to validate the archive and to assert that the
+    // linux native modules are inside it.
+    if (args[0] === '-tzf') return entries.map(entry => `./${entry}`).join('\n');
+    return '';
   };
 }
 
@@ -135,4 +140,47 @@ test('failed bundle leaves existing output and cleans temporary file', () => {
   assert.equal(readFileSync(join(root, 'dsh-bundle.tar.gz'), 'utf8'), 'good');
   assert.equal(readdirSync(root).some((name) => name.includes('.tmp-')), false);
   assert.equal(validateBundle(join(root, 'missing'), () => { throw new Error(); }), false);
+});
+
+test('inspectBundleNatives accepts a bundle carrying the linux natives', () => {
+  const entries = ['./package.json', ...REQUIRED_NATIVE_ENTRIES.map(e => `./${e}`)];
+  assert.deepEqual(inspectBundleNatives(entries), { missing: [], foreign: [] });
+});
+
+test('inspectBundleNatives reports missing linux natives', () => {
+  const { missing } = inspectBundleNatives(['./package.json', './.bin/dsh']);
+  assert.deepEqual(missing, [...REQUIRED_NATIVE_ENTRIES]);
+});
+
+// A bundle produced on macOS still lists a linux triple in its manifest, and
+// still passes `dsh --version`; the darwin koffi package is what gives it away.
+test('inspectBundleNatives flags native packages from a foreign build host', () => {
+  const { foreign } = inspectBundleNatives([
+    ...REQUIRED_NATIVE_ENTRIES,
+    '@koromix/koffi-darwin-arm64/macos_arm64/koffi.node',
+    '@koromix/koffi-win32-x64/win32_x64/koffi.node',
+  ]);
+  assert.deepEqual(foreign.sort(), [
+    '@koromix/koffi-darwin-arm64/macos_arm64/koffi.node',
+    '@koromix/koffi-win32-x64/win32_x64/koffi.node',
+  ]);
+});
+
+test('normalizeTarEntry strips ./ prefixes and trailing slashes', () => {
+  assert.equal(normalizeTarEntry('./node-pty/prebuilds/'), 'node-pty/prebuilds');
+  assert.equal(normalizeTarEntry('  @koromix/koffi-linux-x64  '), '@koromix/koffi-linux-x64');
+});
+
+test('buildBundle refuses to publish a bundle without linux natives', () => {
+  const root = fixture();
+  const calls = [];
+  assert.throws(
+    () => buildBundle({
+      projectRoot: root,
+      exec: fakeTar(calls, false, ['./package.json']),
+      detectHost: linuxHostDetect,
+    }),
+    err => err.code === 'INVALID_BUNDLE_CONTENTS' && /pty\.node/.test(err.message),
+  );
+  assert.equal(existsSync(join(root, 'dsh-bundle.tar.gz')), false);
 });
