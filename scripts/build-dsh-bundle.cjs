@@ -80,12 +80,17 @@ function inspectBundleNatives(entries) {
 function assertBundleNatives(path, exec = execFileSync) {
   const { missing, foreign } = inspectBundleNatives(listTarEntries(path, exec));
   if (missing.length === 0 && foreign.length === 0) return;
-  const lines = [`bundle is not a usable ${TARGET_TRIPLE} runner:`];
+  const lines = [`${path} is not a usable ${TARGET_TRIPLE} runner:`];
   for (const entry of missing) lines.push(`  - missing native module: ${entry}`);
   for (const entry of [...new Set(foreign.map(e => e.split('/').slice(0, 2).join('/')))]) {
     lines.push(`  - foreign native package for another platform: ${entry}`);
   }
-  lines.push('', 'The bundle must be built by npm run build:bundle on a Linux x64 glibc host.');
+  lines.push(
+    '',
+    'The bundle must be built by npm run build:bundle on a Linux x64 glibc host.',
+    'On macOS/Windows, copy dsh-bundle.tar.gz + dsh-bundle.manifest.json from such a',
+    'host (or from the CI artifact) and point DSH_BUNDLE_DIR at the directory holding them.',
+  );
   const error = new Error(lines.join('\n'));
   error.code = 'INVALID_BUNDLE_CONTENTS';
   error.missing = missing;

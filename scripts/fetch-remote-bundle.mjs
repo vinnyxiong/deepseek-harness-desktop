@@ -50,6 +50,17 @@ function sha256(path) {
 }
 
 function copyBundleFromDir(sourceDir, { force }) {
+  // Fetching from the repo root is a no-op copy that only rewrites the manifest
+  // to match whatever tarball already sits there -- which is how a locally built
+  // macOS bundle ends up wearing a linux-x64-gnu manifest.
+  if (resolve(sourceDir) === root) {
+    throw new Error(
+      `Refusing to fetch ${BUNDLE} from the repo root (${root}): there is nothing to fetch, ` +
+      'and the manifest would simply be relabelled to match the tarball already present. ' +
+      'Point DSH_BUNDLE_DIR at a directory holding a bundle built on a Linux x64 glibc host.'
+    );
+  }
+
   const srcBundle = join(sourceDir, BUNDLE);
   const srcManifest = join(sourceDir, MANIFEST);
   const srcVersion = join(sourceDir, VERSION);
