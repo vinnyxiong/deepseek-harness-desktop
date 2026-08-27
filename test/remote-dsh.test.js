@@ -21,6 +21,7 @@ const {
   getBundledDshVersion,
   getBundledTriple,
   readBundledManifest,
+  REQUIRED_REMOTE_NATIVES,
   SUPPORTED_TRIPLE,
   DSH_REMOTE_BIN,
   DSH_REMOTE_MANIFEST_FILE,
@@ -135,7 +136,8 @@ test('readRemoteManifest returns null for malformed manifest', async () => {
 // --- checkRemoteIdentity ---
 
 test('checkRemoteIdentity returns ok for matching install', async () => {
-  const manifest = { triple: 'linux-x64-gnu', version: '1.0.0' };
+  const digest = `sha256:${'a'.repeat(64)}`;
+  const manifest = { triple: 'linux-x64-gnu', version: '1.0.0', digest };
   const spawn = spawnWithSequence([
     { stdout: 'BIN_OK' },
     { stdout: JSON.stringify(manifest) },
@@ -145,8 +147,27 @@ test('checkRemoteIdentity returns ok for matching install', async () => {
     spawnImpl: spawn,
     bundledVersion: '1.0.0',
     bundledTriple: 'linux-x64-gnu',
+    bundledDigest: digest,
   });
   assert.equal(r.ok, true);
+});
+
+// A runner installed from a different tarball must be replaced even when its
+// version and triple line up -- that is how a bad bundle gets evicted.
+test('checkRemoteIdentity forces reinstall when the bundle digest differs', async () => {
+  const spawn = spawnWithSequence([
+    { stdout: 'BIN_OK' },
+    { stdout: JSON.stringify({ triple: 'linux-x64-gnu', version: '1.0.0', digest: `sha256:${'b'.repeat(64)}` }) },
+  ]);
+  const r = await checkRemoteIdentity(settings, {
+    spawnImpl: spawn,
+    bundledVersion: '1.0.0',
+    bundledTriple: 'linux-x64-gnu',
+    bundledDigest: `sha256:${'a'.repeat(64)}`,
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'mismatch');
+  assert.match(r.detail, /digest/);
 });
 
 test('checkRemoteIdentity returns missing when binary not present', async () => {
@@ -481,4 +502,43 @@ test('getBundledDshVersion returns a version string', () => {
   const v = getBundledDshVersion();
   assert.equal(typeof v, 'string');
   assert.ok(v.length > 0);
+});
+
+// --- native module guard ---
+
+// The desktop app cannot require scripts/ (it is not packaged into app.asar),
+// so the list is duplicated. Keep the copies honest.
+test('REQUIRED_REMOTE_NATIVES matches the bundle builder list', () => {
+  const { REQUIRED_NATIVE_ENTRIES } = require('../scripts/build-dsh-bundle.cjs');
+  assert.deepEqual([...REQUIRED_REMOTE_NATIVES], [...REQUIRED_NATIVE_ENTRIES]);
+});
+
+test('transfer script fails the install when a native module is missing', async () => {
+  const { tmpDir, tmpTar } = makeValidBundle();
+  const commands = [];
+  let callCount = 0;
+  const spawn = (bin, args) => {
+    commands.push(args[args.length - 1]);
+    const child = new EventEmitter();
+    child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.pid = 9000; child.kill = () => {};
+    const idx = callCount;
+    callCount += 1;
+    process.nextTick(() => {
+      child.stdout.write(idx === 0 ? 'PLATFORM:linux\nARCH:x64\nLIBC:gnu\nTRIPLE:linux-x64-gnu' : 'done');
+      child.emit('exit', 0, null);
+    });
+    return child;
+  };
+  try {
+    await transferRemoteDsh(settings, { spawnImpl: spawn, bundlePath: tmpTar, manifest: makeTestManifest() });
+  } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+
+  const script = commands[1];
+  for (const entry of REQUIRED_REMOTE_NATIVES) {
+    assert.match(script, new RegExp(`test -f "\\$STAGE/node_modules/${entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+  }
+  // The guard has to run before the staging directory replaces the live runner.
+  assert.ok(script.indexOf('pty.node') < script.indexOf('failed to move old runner aside'));
 });

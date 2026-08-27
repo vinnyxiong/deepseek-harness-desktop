@@ -15,6 +15,19 @@ const DSH_REMOTE_LOG_FILE = `${DSH_REMOTE_RUNNER_DIR}/desktop-managed.log`;
 
 const SUPPORTED_TRIPLE = 'linux-x64-gnu';
 
+// Native modules the remote runner must contain, relative to its node_modules.
+// `dsh --version` never loads them, so a bundle built on the wrong host passes
+// the smoke test and only fails later, when `dsh web` boots the plugin loader
+// ("Failed to load native module: pty.node" / "Cannot find the native Koffi
+// module"). Checking them here keeps the failure at install time, where the
+// error message can name the real cause.
+// Keep in sync with REQUIRED_NATIVE_ENTRIES in scripts/build-dsh-bundle.cjs
+// (test/remote-dsh.test.js asserts the two lists match).
+const REQUIRED_REMOTE_NATIVES = Object.freeze([
+  'node-pty/prebuilds/linux-x64/pty.node',
+  '@koromix/koffi-linux-x64/linux_x64/koffi.node',
+]);
+
 const COMMAND_TIMEOUT_MS = 15_000;
 
 // --- Bundle / manifest discovery on the local (desktop) side ---
@@ -189,6 +202,7 @@ async function readRemoteManifest(settings, opts = {}) {
 async function checkRemoteIdentity(settings, opts = {}) {
   const bundledVersion = opts.bundledVersion || getBundledDshVersion();
   const bundledTriple = opts.bundledTriple || getBundledTriple();
+  const bundledDigest = opts.bundledDigest || readBundledManifest()?.digest || '';
 
   // First check binary exists.
   const binCheckCmd = `if test -x ${DSH_REMOTE_BIN}; then echo BIN_OK; else echo BIN_MISSING; fi`;
@@ -209,10 +223,10 @@ async function checkRemoteIdentity(settings, opts = {}) {
   }
   // Compare bundle digest to detect redeployments after bundle rebuild.
   // Without this, a runner with the same version/triple but different
-  // native module versions (e.g. after a dependency upgrade) is reused.
-  const bundledManifest = readBundledManifest();
-  if (bundledManifest?.digest && manifest.digest !== bundledManifest.digest) {
-    return { ok: false, reason: 'mismatch', detail: `Remote bundle digest ${manifest.digest} does not match bundled ${bundledManifest.digest}` };
+  // native module contents (e.g. one deployed by an app whose bundle was built
+  // on the wrong host) is reused instead of being replaced.
+  if (bundledDigest && manifest.digest !== bundledDigest) {
+    return { ok: false, reason: 'mismatch', detail: `Remote bundle digest ${manifest.digest} does not match bundled ${bundledDigest}` };
   }
   // Verify version file also matches (defense in depth).
   const versionCheckCmd = `if test -f ${DSH_REMOTE_VERSION_FILE} && grep -qFx '${bundledVersion}' ${DSH_REMOTE_VERSION_FILE}; then echo V_OK; else echo V_MISMATCH; fi`;
@@ -304,6 +318,7 @@ MANIFEST_EOF
 echo '${version}' > "$STAGE/.dsh-version" || fail "failed to write version file"
 if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is not executable at $STAGE/node_modules/.bin/dsh"; fi
 "$STAGE/node_modules/.bin/dsh" --version >"$STAGE/smoke.out" 2>"$STAGE/smoke.err" || fail "dsh --version failed: $(cat "$STAGE/smoke.err" 2>/dev/null)"
+${REQUIRED_REMOTE_NATIVES.map(entry => `if ! test -f "$STAGE/node_modules/${entry}"; then fail "bundle is missing the ${SUPPORTED_TRIPLE} native module ${entry}; the desktop app shipped a bundle that was not built on a Linux x64 glibc host"; fi`).join('\n')}
 # Atomic replacement: move old runner aside, move staging into place, then restore user-installed plugins from the old installation.
 	if [ -d "${DSH_REMOTE_RUNNER_DIR}" ]; then
 	  mv "${DSH_REMOTE_RUNNER_DIR}" "${DSH_REMOTE_RUNNER_DIR}.old" || fail "failed to move old runner aside"
@@ -527,6 +542,7 @@ module.exports = {
   DSH_REMOTE_METADATA_FILE,
   DSH_REMOTE_RUNNER_DIR,
   DSH_REMOTE_VERSION_FILE,
+  REQUIRED_REMOTE_NATIVES,
   SUPPORTED_TRIPLE,
   buildRemoteSshArgs,
   checkRemoteIdentity,
