@@ -49,13 +49,13 @@ function sha256(path) {
   return hash.digest('hex');
 }
 
-function copyBundleFromDir(sourceDir, { force }) {
-  // Fetching from the repo root is a no-op copy that only rewrites the manifest
+export function copyBundleFromDir(sourceDir, { force, destDir = root }) {
+  // Fetching from the destination is a no-op copy that only rewrites the manifest
   // to match whatever tarball already sits there -- which is how a locally built
   // macOS bundle ends up wearing a linux-x64-gnu manifest.
-  if (resolve(sourceDir) === root) {
+  if (resolve(sourceDir) === resolve(destDir)) {
     throw new Error(
-      `Refusing to fetch ${BUNDLE} from the repo root (${root}): there is nothing to fetch, ` +
+      `Refusing to fetch ${BUNDLE} from the repo root (${destDir}): there is nothing to fetch, ` +
       'and the manifest would simply be relabelled to match the tarball already present. ' +
       'Point DSH_BUNDLE_DIR at a directory holding a bundle built on a Linux x64 glibc host.'
     );
@@ -94,14 +94,19 @@ function copyBundleFromDir(sourceDir, { force }) {
     writeFileSync(srcManifest, `${JSON.stringify(manifest, null, 2)}\n`);
   }
 
-  const destBundle = join(root, BUNDLE);
-  const destManifest = join(root, MANIFEST);
-  const destVersion = join(root, VERSION);
+  const destBundle = join(destDir, BUNDLE);
+  const destManifest = join(destDir, MANIFEST);
+  const destVersion = join(destDir, VERSION);
 
   if (!force && existsSync(destBundle) && existsSync(destManifest)) {
     try {
       const existing = JSON.parse(readFileSync(destManifest, 'utf8'));
-      if (existing.digest === manifest.digest) {
+      // Both digests have to be checked against the *tarball* on disk. The
+      // manifest is tracked in git while the tarball is gitignored, so a pull
+      // routinely leaves a manifest describing a tarball this checkout has
+      // never had -- comparing manifest to manifest would call that "up to
+      // date" and silently keep the stale tarball.
+      if (existing.digest === manifest.digest && `sha256:${sha256(destBundle)}` === manifest.digest) {
         // Always sync the version file to the manifest — the version file is
         // gitignored, so a git pull that updates the manifest won't update it.
         if (!existsSync(destVersion) || readFileSync(destVersion, 'utf8').trim() !== manifest.version) {
@@ -166,9 +171,13 @@ function main() {
   return downloadViaGh('dsh-remote-bundle-linux-x64-gnu', args);
 }
 
-try {
-  main();
-} catch (e) {
-  console.error(e.message);
-  process.exit(1);
+const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  try {
+    main();
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
 }
