@@ -24,7 +24,10 @@ const {
   REQUIRED_REMOTE_NATIVES,
   SUPPORTED_TRIPLE,
   DSH_REMOTE_BIN,
+  DSH_REMOTE_LOG_FILE,
   DSH_REMOTE_MANIFEST_FILE,
+  DSH_REMOTE_METADATA_FILE,
+  DSH_REMOTE_RUNNER_DIR,
   DSH_REMOTE_VERSION_FILE,
 } = require('../src/main/remote-dsh');
 
@@ -541,4 +544,48 @@ test('transfer script fails the install when a native module is missing', async 
   }
   // The guard has to run before the staging directory replaces the live runner.
   assert.ok(script.indexOf('pty.node') < script.indexOf('failed to move old runner aside'));
+});
+
+// --- redeployment must not orphan the running instance ---
+
+// A redeployment moves the runner directory aside and deletes it. Anything the
+// desktop needs in order to find the process it started has to live elsewhere,
+// or the process survives the swap with nobody able to stop it.
+test('managed metadata and log live outside the runner directory', () => {
+  assert.ok(!DSH_REMOTE_METADATA_FILE.startsWith(`${DSH_REMOTE_RUNNER_DIR}/`), DSH_REMOTE_METADATA_FILE);
+  assert.ok(!DSH_REMOTE_LOG_FILE.startsWith(`${DSH_REMOTE_RUNNER_DIR}/`), DSH_REMOTE_LOG_FILE);
+});
+
+test('transfer script stops the running instance before swapping the runner', async () => {
+  const { tmpDir, tmpTar } = makeValidBundle();
+  const commands = [];
+  let callCount = 0;
+  const spawn = (bin, args) => {
+    commands.push(args[args.length - 1]);
+    const child = new EventEmitter();
+    child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.pid = 9000; child.kill = () => {};
+    const idx = callCount;
+    callCount += 1;
+    process.nextTick(() => {
+      child.stdout.write(idx === 0 ? 'PLATFORM:linux\nARCH:x64\nLIBC:gnu\nTRIPLE:linux-x64-gnu' : 'done');
+      child.emit('exit', 0, null);
+    });
+    return child;
+  };
+  try {
+    await transferRemoteDsh(settings, { spawnImpl: spawn, bundlePath: tmpTar, manifest: makeTestManifest() });
+  } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+
+  const script = commands[1];
+  // Both the current and the pre-0.0.2 metadata locations are consulted, so an
+  // instance recorded by an older desktop build still gets stopped.
+  assert.match(script, /read_managed_pid/);
+  assert.ok(script.includes(DSH_REMOTE_METADATA_FILE));
+  assert.ok(script.includes(`${DSH_REMOTE_RUNNER_DIR}/desktop-managed.env`));
+  assert.match(script, /kill "\$OLD_PID"/);
+  // Stopping it must happen after the smoke test and before the swap.
+  assert.ok(script.indexOf('--version') < script.indexOf('read_managed_pid'));
+  assert.ok(script.indexOf('read_managed_pid') < script.indexOf('failed to move old runner aside'));
 });

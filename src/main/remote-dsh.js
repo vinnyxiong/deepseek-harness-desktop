@@ -10,8 +10,14 @@ const DSH_REMOTE_RUNNER_DIR = `${DSH_REMOTE_BASE_DIR}/runner`;
 const DSH_REMOTE_BIN = `${DSH_REMOTE_RUNNER_DIR}/node_modules/.bin/dsh`;
 const DSH_REMOTE_VERSION_FILE = `${DSH_REMOTE_RUNNER_DIR}/.dsh-version`;
 const DSH_REMOTE_MANIFEST_FILE = `${DSH_REMOTE_RUNNER_DIR}/.dsh-manifest.json`;
-const DSH_REMOTE_METADATA_FILE = `${DSH_REMOTE_RUNNER_DIR}/desktop-managed.env`;
-const DSH_REMOTE_LOG_FILE = `${DSH_REMOTE_RUNNER_DIR}/desktop-managed.log`;
+// Deliberately outside the runner directory: a redeployment moves the runner
+// aside and deletes it, so metadata kept inside it would take the record of the
+// running process with it -- leaving an orphan that the desktop can no longer
+// discover or stop, still holding its port and its plugin locks.
+const DSH_REMOTE_METADATA_FILE = `${DSH_REMOTE_BASE_DIR}/desktop-managed.env`;
+const DSH_REMOTE_LOG_FILE = `${DSH_REMOTE_BASE_DIR}/desktop-managed.log`;
+// Pre-0.0.2 installs kept both inside the runner directory.
+const DSH_REMOTE_LEGACY_METADATA_FILE = `${DSH_REMOTE_RUNNER_DIR}/desktop-managed.env`;
 
 const SUPPORTED_TRIPLE = 'linux-x64-gnu';
 
@@ -319,6 +325,38 @@ echo '${version}' > "$STAGE/.dsh-version" || fail "failed to write version file"
 if ! test -x "$STAGE/node_modules/.bin/dsh"; then fail "extracted dsh binary is not executable at $STAGE/node_modules/.bin/dsh"; fi
 "$STAGE/node_modules/.bin/dsh" --version >"$STAGE/smoke.out" 2>"$STAGE/smoke.err" || fail "dsh --version failed: $(cat "$STAGE/smoke.err" 2>/dev/null)"
 ${REQUIRED_REMOTE_NATIVES.map(entry => `if ! test -f "$STAGE/node_modules/${entry}"; then fail "bundle is missing the ${SUPPORTED_TRIPLE} native module ${entry}; the desktop app shipped a bundle that was not built on a Linux x64 glibc host"; fi`).join('\n')}
+# The runner directory is about to be replaced. A dsh started from the old one
+# keeps running code that no longer exists on disk and keeps holding its port
+# and its plugin locks (the task-board ledger, for one), so the next start
+# collides with it. Stop it here -- after the smoke tests, so a failed install
+# never takes down a working instance.
+read_managed_pid() {
+  RESULT=''
+  if [ -f "$1" ]; then
+    while IFS= read -r LINE; do
+      case "$LINE" in
+        PID=*)
+          VALUE=\${LINE#PID=}
+          case "$VALUE" in ''|*[!0-9]*) ;; *) RESULT=$VALUE ;; esac
+          ;;
+      esac
+    done < "$1"
+  fi
+  echo "$RESULT"
+}
+for META in "${DSH_REMOTE_METADATA_FILE}" "${DSH_REMOTE_LEGACY_METADATA_FILE}"; do
+  OLD_PID=$(read_managed_pid "$META")
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+    kill "$OLD_PID" 2>/dev/null || true
+    WAITED=0
+    while [ "$WAITED" -lt 10 ] && kill -0 "$OLD_PID" 2>/dev/null; do
+      sleep 1
+      WAITED=$((WAITED + 1))
+    done
+    kill -9 "$OLD_PID" 2>/dev/null || true
+  fi
+  rm -f "$META"
+done
 # Atomic replacement: move old runner aside, move staging into place, then restore user-installed plugins from the old installation.
 	if [ -d "${DSH_REMOTE_RUNNER_DIR}" ]; then
 	  mv "${DSH_REMOTE_RUNNER_DIR}" "${DSH_REMOTE_RUNNER_DIR}.old" || fail "failed to move old runner aside"
@@ -537,6 +575,7 @@ async function updateRemoteDsh(settings, opts = {}) {
 
 module.exports = {
   DSH_REMOTE_BIN,
+  DSH_REMOTE_LEGACY_METADATA_FILE,
   DSH_REMOTE_LOG_FILE,
   DSH_REMOTE_MANIFEST_FILE,
   DSH_REMOTE_METADATA_FILE,
