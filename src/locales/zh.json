@@ -4,6 +4,7 @@
   "menu.dshSettings": "DSH 设置…",
   "menu.reconnect": "重新连接",
   "menu.refreshWebview": "刷新当前视图",
+  "menu.inspectWebview": "检查当前视图",
   "menu.previousEnvironment": "上一个环境",
   "menu.nextEnvironment": "下一个环境",
   "menu.edit": "编辑",

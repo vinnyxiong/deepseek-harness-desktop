@@ -4,6 +4,7 @@
   "menu.dshSettings": "DSH Settings…",
   "menu.reconnect": "Reconnect",
   "menu.refreshWebview": "Refresh Current View",
+  "menu.inspectWebview": "Inspect Current View",
   "menu.previousEnvironment": "Previous Environment",
   "menu.nextEnvironment": "Next Environment",
   "menu.edit": "Edit",

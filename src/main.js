@@ -65,6 +65,10 @@ function buildMenu() {
 
   const viewSubmenu = [
     { label: t('menu.refreshWebview'), accelerator: 'CommandOrControl+Alt+R', click: () => dispatch('refresh-webview') },
+    // Available in packaged builds on purpose: when a remote view renders blank
+    // the only place the reason shows up is the guest page's own console, and
+    // the toggleDevTools role below opens the host window's, not the webview's.
+    { label: t('menu.inspectWebview'), accelerator: 'CommandOrControl+Alt+I', click: () => dispatch('inspect-webview') },
     { role: 'togglefullscreen' },
   ];
   if (dev) viewSubmenu.push({ type: 'separator' }, { role: 'reload', accelerator: 'CommandOrControl+Alt+Shift+R' }, { role: 'toggleDevTools' });

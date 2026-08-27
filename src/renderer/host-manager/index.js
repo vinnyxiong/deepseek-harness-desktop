@@ -1177,6 +1177,12 @@ const MENU_COMMANDS = {
   'previous-environment': () => cycleEnvironment(-1),
   'next-environment': () => cycleEnvironment(1),
   'refresh-webview': () => { if (selectedHostId) reloadWebview(selectedHostId); },
+  'inspect-webview': () => {
+    const wv = selectedHostId ? webviews.get(selectedHostId) : null;
+    if (!wv) { toast(t('toast.connectFirst'), 'info'); return; }
+    if (wv.isDevToolsOpened?.()) wv.closeDevTools?.();
+    else wv.openDevTools?.();
+  },
   'select-host': payload => { const id = payload && payload.hostId; if (id && hostFor(id)) selectHost(id); },
 };
 
