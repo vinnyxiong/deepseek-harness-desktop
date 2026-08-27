@@ -11,6 +11,7 @@ const HOST_COMMANDS = new Set([
   'previous-environment',
   'next-environment',
   'refresh-webview',
+  'inspect-webview',
   'select-host',
 ]);
 

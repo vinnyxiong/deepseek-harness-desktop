@@ -1187,7 +1187,10 @@ const MENU_COMMANDS = {
 };
 
 if (typeof api.onCommand === 'function') {
-  api.onCommand((command, payload) => {
+  // The preload forwards the IPC message verbatim as a single { command, payload }
+  // object -- destructure it rather than reading two positional arguments.
+  api.onCommand(message => {
+    const { command, payload } = message || {};
     const handler = MENU_COMMANDS[command];
     if (handler) handler(payload);
   });

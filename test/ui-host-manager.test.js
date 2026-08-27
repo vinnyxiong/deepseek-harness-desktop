@@ -109,3 +109,54 @@ test('form controls are associated with labels', () => {
     );
   }
 });
+
+// --- Menu command wiring ---
+//
+// A menu item is only useful if it survives three hops: main.js dispatches a
+// name, windows.js checks it against an allowlist, and the renderer looks it up
+// in MENU_COMMANDS. A break at any hop is silent -- sendCommand's error is
+// swallowed by dispatch's try/catch, and an unknown key is simply ignored -- so
+// the item just does nothing when clicked. These tests pin all three together.
+// (windows.js requires 'electron', so the lists are read from source.)
+
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+
+const repoRoot = resolve(__dirname, '..');
+const readSource = rel => readFileSync(resolve(repoRoot, rel), 'utf8');
+
+function allowedCommands() {
+  const block = readSource('src/main/windows.js').match(/const HOST_COMMANDS = new Set\(\[([\s\S]*?)\]\)/);
+  assert.ok(block, 'could not locate the HOST_COMMANDS allowlist');
+  return new Set([...block[1].matchAll(/'([^']+)'/g)].map(m => m[1]));
+}
+
+function dispatchedCommands() {
+  return new Set([...readSource('src/main.js').matchAll(/dispatch\('([^']+)'/g)].map(m => m[1]));
+}
+
+function handledCommands() {
+  const block = readSource('src/renderer/host-manager/index.js').match(/const MENU_COMMANDS = \{([\s\S]*?)\n\};/);
+  assert.ok(block, 'could not locate the MENU_COMMANDS table');
+  return new Set([...block[1].matchAll(/^ {2}'([^']+)':/gm)].map(m => m[1]));
+}
+
+test('every command the menu dispatches is on the allowlist', () => {
+  const allowed = allowedCommands();
+  const missing = [...dispatchedCommands()].filter(command => !allowed.has(command));
+  assert.deepEqual(missing, [], `dispatched but rejected by windows.sendCommand: ${missing.join(', ')}`);
+});
+
+test('every allowlisted command has a renderer handler', () => {
+  const handled = handledCommands();
+  const missing = [...allowedCommands()].filter(command => !handled.has(command));
+  assert.deepEqual(missing, [], `allowlisted but absent from MENU_COMMANDS: ${missing.join(', ')}`);
+});
+
+test('the renderer reads menu commands as one message object', () => {
+  const source = readSource('src/renderer/host-manager/index.js');
+  // The preload forwards the IPC message verbatim: callback({ command, payload }).
+  // Reading it as two positional arguments silently breaks every menu item.
+  assert.match(source, /api\.onCommand\(\s*message\s*=>/);
+  assert.doesNotMatch(source, /api\.onCommand\(\s*\(\s*command\s*,\s*payload\s*\)\s*=>/);
+});
