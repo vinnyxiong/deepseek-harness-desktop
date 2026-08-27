@@ -620,3 +620,49 @@ test('transfer script verifies the pid is a dsh before signalling it', async () 
   // The identity check gates the kill, rather than running after it.
   assert.ok(script.indexOf('is_managed_dsh "$OLD_PID"') < script.indexOf('kill "$OLD_PID"'));
 });
+
+// --- stop must outlive the signal, not just send it ---
+
+// `kill` returns as soon as the signal is sent. Declaring success there, and
+// deleting the metadata there, leaves a live process nobody can see; the next
+// start races it and dies on whatever singleton it still holds (the task-board
+// ledger lock, in practice).
+test('stop script waits for the process to exit before clearing metadata', async () => {
+  let script = null;
+  const spawn = (bin, args) => {
+    script = args[args.length - 1];
+    const child = new EventEmitter();
+    child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.pid = 9000; child.kill = () => {};
+    process.nextTick(() => { child.stdout.write('stopped'); child.emit('exit', 0, null); });
+    return child;
+  };
+  const result = await stopRemoteDsh(settings, 4242, { spawnImpl: spawn });
+  assert.equal(result.status, 'stopped');
+
+  // Escalates only after waiting, and reports failure rather than lying.
+  assert.match(script, /kill -0 "\$PID"/);
+  assert.match(script, /kill -9 "\$PID"/);
+  assert.match(script, /stop-failed/);
+  // The metadata is dropped after the liveness loop, not next to the first kill.
+  const lastWait = script.lastIndexOf('kill -0 "$PID"');
+  assert.ok(lastWait < script.indexOf(`rm -f ${DSH_REMOTE_METADATA_FILE}\necho "stopped"`));
+});
+
+test('stop script refuses to signal a pid that is not a dsh', async () => {
+  let script = null;
+  const spawn = (bin, args) => {
+    script = args[args.length - 1];
+    const child = new EventEmitter();
+    child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.pid = 9000; child.kill = () => {};
+    process.nextTick(() => { child.stdout.write('not-found'); child.emit('exit', 0, null); });
+    return child;
+  };
+  const result = await stopRemoteDsh(settings, 4242, { spawnImpl: spawn });
+  assert.equal(result.status, 'not-found');
+  assert.match(script, /is_managed_dsh/);
+  assert.ok(script.indexOf('if ! is_managed_dsh "$PID"') < script.indexOf('kill "$PID"'));
+});

@@ -21,6 +21,16 @@ const DSH_REMOTE_LEGACY_METADATA_FILE = `${DSH_REMOTE_RUNNER_DIR}/desktop-manage
 
 const SUPPORTED_TRIPLE = 'linux-x64-gnu';
 
+// Shell helper shared by the stop and transfer scripts: confirm a pid really is
+// a dsh started from this runner before signalling it. Metadata can outlive the
+// process it names and the kernel recycles pids, so an unverified kill can hit
+// an unrelated process. Matched on a path suffix rather than $HOME: the recorded
+// command line may spell the home directory differently than this shell does
+// (symlinked homes), and a mismatch there would silently skip the check.
+const SHELL_IS_MANAGED_DSH = `is_managed_dsh() {
+  ps -p "$1" -o args= 2>/dev/null | grep -q 'state/dsh/runner/node_modules/\\.bin/dsh'
+}`;
+
 // Native modules the remote runner must contain, relative to its node_modules.
 // `dsh --version` never loads them, so a bundle built on the wrong host passes
 // the smoke test and only fails later, when `dsh web` boots the plugin loader
@@ -348,12 +358,7 @@ read_managed_pid() {
 # found), and the kernel recycles pids -- so confirm the pid still belongs to a
 # dsh started from this runner before signalling it. Unverifiable means leave it
 # alone: an orphaned runner is recoverable, killing an unrelated process is not.
-# Matched on a path suffix rather than $HOME: the recorded command line may spell
-# the home directory differently than this shell does (symlinked homes), and a
-# mismatch there would silently skip the check.
-is_managed_dsh() {
-  ps -p "$1" -o args= 2>/dev/null | grep -q 'state/dsh/runner/node_modules/\.bin/dsh'
-}
+${SHELL_IS_MANAGED_DSH}
 for META in "${DSH_REMOTE_METADATA_FILE}" "${DSH_REMOTE_LEGACY_METADATA_FILE}"; do
   OLD_PID=$(read_managed_pid "$META")
   if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null && is_managed_dsh "$OLD_PID"; then
@@ -533,10 +538,53 @@ async function performRemoteHealthCheck(settings, port, opts = {}) {
   return stdout.includes('HEALTHY');
 }
 
+// Stop the desktop-managed dsh and do not return until it is actually gone.
+//
+// `kill` succeeds as soon as the signal is *sent*, so reporting success there --
+// and deleting the metadata there -- leaves a live process the desktop can no
+// longer see. The next start then races it and loses: the survivor still owns
+// singleton resources like the task-board ledger lock, and the new instance dies
+// with "ledger is already owned by process N". Wait for the exit instead, and
+// only drop the metadata once there is nothing left to record.
 async function stopRemoteDsh(settings, pid, opts = {}) {
   const explicitPid = Number.isSafeInteger(pid) && pid > 0 ? String(pid) : '';
-  const command = `PID=${explicitPid}; if test -z "$PID" && test -f ${DSH_REMOTE_METADATA_FILE}; then while IFS= read -r LINE; do case "$LINE" in PID=*) VALUE=\${LINE#PID=}; case "$VALUE" in ''|*[!0-9]*) ;; *) PID=$VALUE ;; esac ;; esac; done < ${DSH_REMOTE_METADATA_FILE}; fi; if test -z "$PID"; then echo "not-found"; exit 0; fi; if kill "$PID"; then rm -f ${DSH_REMOTE_METADATA_FILE}; echo "stopped"; elif kill -0 "$PID" 2>/dev/null; then echo "stop-failed" >&2; exit 1; else rm -f ${DSH_REMOTE_METADATA_FILE}; echo "not-found"; fi`;
-  const { stdout } = await runRemoteCommand(settings, command, opts);
+  const command = `PID=${explicitPid}
+if test -z "$PID" && test -f ${DSH_REMOTE_METADATA_FILE}; then
+  while IFS= read -r LINE; do
+    case "$LINE" in
+      PID=*) VALUE=\${LINE#PID=}; case "$VALUE" in ''|*[!0-9]*) ;; *) PID=$VALUE ;; esac ;;
+    esac
+  done < ${DSH_REMOTE_METADATA_FILE}
+fi
+if test -z "$PID"; then echo "not-found"; exit 0; fi
+${SHELL_IS_MANAGED_DSH}
+if ! is_managed_dsh "$PID"; then
+  # Already gone, or the pid was recycled by an unrelated process.
+  rm -f ${DSH_REMOTE_METADATA_FILE}
+  echo "not-found"
+  exit 0
+fi
+kill "$PID" 2>/dev/null || true
+WAITED=0
+while [ "$WAITED" -lt 10 ] && kill -0 "$PID" 2>/dev/null; do
+  sleep 1
+  WAITED=$((WAITED + 1))
+done
+if kill -0 "$PID" 2>/dev/null; then
+  kill -9 "$PID" 2>/dev/null || true
+  WAITED=0
+  while [ "$WAITED" -lt 3 ] && kill -0 "$PID" 2>/dev/null; do
+    sleep 1
+    WAITED=$((WAITED + 1))
+  done
+fi
+if kill -0 "$PID" 2>/dev/null; then
+  echo "stop-failed: process $PID survived SIGKILL" >&2
+  exit 1
+fi
+rm -f ${DSH_REMOTE_METADATA_FILE}
+echo "stopped"`;
+  const { stdout } = await runRemoteCommand(settings, command, { ...opts, timeoutMs: opts.timeoutMs ?? 30_000 });
   return { status: stdout.trim() === 'stopped' ? 'stopped' : 'not-found' };
 }
 
