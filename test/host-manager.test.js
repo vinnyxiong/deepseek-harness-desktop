@@ -246,3 +246,82 @@ test('remote discovery uses bounded concurrency', async () => {
   await manager.discoverAndAttachRemoteHosts({ concurrency: 2 });
   assert.equal(maximum, 2);
 });
+
+// --- The endpoint must answer before we call it connected ---
+//
+// startManagedSsh resolves once ssh has been spawned; the forward is not bound
+// yet. Announcing 'connected' there points the renderer's <webview> at a dead
+// port, and the guest sticks on chrome-error://chromewebdata/ -- a blank pane
+// that never retries even after the tunnel comes up.
+
+test('remote connect waits for the endpoint before reporting connected', async () => {
+  const order = [];
+  let releaseHealth;
+  const gate = new Promise(resolve => { releaseHealth = resolve; });
+  const manager = new HostManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() {},
+    }),
+    health: {
+      async waitForDsh(url) { order.push(`wait:${url}`); await gate; },
+      async probeDsh() {},
+    },
+  });
+  manager.setHosts([remoteHost]);
+  manager.on('status', (_hostId, snapshot) => {
+    if (snapshot.state === 'connected') order.push('connected');
+  });
+
+  const connecting = manager.connect('r1');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(order, ['wait:http://127.0.0.1:3080'], 'must not be connected while the endpoint is still unreachable');
+
+  releaseHealth();
+  const snapshot = await connecting;
+  assert.equal(snapshot.state, 'connected');
+  assert.deepEqual(order, ['wait:http://127.0.0.1:3080', 'connected']);
+  await manager.dispose();
+});
+
+test('remote connect fails and stops the tunnel when the endpoint never answers', async () => {
+  let stopped = false;
+  const manager = new HostManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => true, async stop() { stopped = true; },
+    }),
+    health: {
+      async waitForDsh() { throw new Error('DeepSeek Harness was not reachable'); },
+      async probeDsh() {},
+    },
+  });
+  manager.setHosts([remoteHost]);
+
+  await assert.rejects(() => manager.connect('r1'), /not reachable/);
+  assert.equal(stopped, true, 'a tunnel we are abandoning must not be left running');
+  assert.equal(manager.getSnapshot('r1').state, 'error');
+  await manager.dispose();
+});
+
+test('a tunnel that dies during the wait surfaces the ssh error, not a timeout', async () => {
+  const manager = new HostManager({
+    startLocal: async () => { throw new Error('not expected'); },
+    startManagedSsh: async () => ({
+      mode: 'managedSsh', endpoint: 'http://127.0.0.1:3080', port: 3080, owned: true,
+      isRunning: () => false, async stop() {},
+      earlyExit: Promise.reject(new Error('SSH authentication failed')),
+    }),
+    health: {
+      // Would hang until its own timeout; earlyExit should win the race.
+      async waitForDsh() { await new Promise(() => {}); },
+      async probeDsh() {},
+    },
+  });
+  manager.setHosts([remoteHost]);
+
+  await assert.rejects(() => manager.connect('r1'), /SSH authentication failed/);
+  await manager.dispose();
+});

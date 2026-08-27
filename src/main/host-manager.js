@@ -84,6 +84,7 @@ class HostManager extends EventEmitter {
           this.emitStatus(host.id);
           const handle = await this.startManagedSsh(host, details => this.handleUnexpectedExit(host.id, details), state.port);
           handle.connectionSettings = host;
+          await this.awaitReachable(handle);
           conn.handle = handle;
           conn.generation = 1;
           conn.state = 'connected';
@@ -99,6 +100,29 @@ class HostManager extends EventEmitter {
     };
     await Promise.all(Array.from({ length: Math.min(Math.max(1, concurrency), hosts.length) }, worker));
     return attached;
+  }
+
+  // Do not call a connection established until its endpoint actually answers.
+  //
+  // startManagedSsh resolves once the ssh process has been *spawned*; the port
+  // forward is not bound yet. Reporting 'connected' there makes the renderer
+  // point a <webview> at a port nothing is listening on, and the guest lands on
+  // chrome-error://chromewebdata/ -- a blank pane that never retries, even
+  // though the tunnel comes up a moment later and every later probe succeeds.
+  // The local path never hit this because startLocal waits for dsh to print its
+  // URL, by which time the port is already listening.
+  //
+  // Races against the handle's earlyExit so a tunnel that dies during the wait
+  // surfaces the classified SSH error instead of a generic timeout.
+  async awaitReachable(handle) {
+    if (!handle?.endpoint) return;
+    try {
+      const reachable = this.health.waitForDsh(handle.endpoint);
+      await (handle.earlyExit ? Promise.race([reachable, handle.earlyExit]) : reachable);
+    } catch (error) {
+      await Promise.resolve(handle.stop?.()).catch(() => {});
+      throw error;
+    }
   }
 
   // --- Connect ---
@@ -130,6 +154,7 @@ class HostManager extends EventEmitter {
       const handle = await this.createHandle(host, conn);
       conn.progress = { phase: 'health-check', message: '正在检查服务状态...' };
       this.emitStatus(hostId);
+      await this.awaitReachable(handle);
       conn.generation = 1;
       conn.handle = handle;
       conn.state = 'connected';
@@ -314,6 +339,7 @@ class HostManager extends EventEmitter {
       });
       const newHandle = await this.startManagedSsh(conn.settings, details => this.handleUnexpectedExit(hostId, details), startResult.port);
       newHandle.connectionSettings = conn.settings;
+      await this.awaitReachable(newHandle);
       conn.handle = newHandle;
       conn.generation += 1;
       conn.remoteDshState = { running: true, pid: startResult.pid, port: startResult.port };
