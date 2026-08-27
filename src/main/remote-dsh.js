@@ -344,9 +344,19 @@ read_managed_pid() {
   fi
   echo "$RESULT"
 }
+# A metadata file can outlive the process it names (that is how this bug was
+# found), and the kernel recycles pids -- so confirm the pid still belongs to a
+# dsh started from this runner before signalling it. Unverifiable means leave it
+# alone: an orphaned runner is recoverable, killing an unrelated process is not.
+# Matched on a path suffix rather than $HOME: the recorded command line may spell
+# the home directory differently than this shell does (symlinked homes), and a
+# mismatch there would silently skip the check.
+is_managed_dsh() {
+  ps -p "$1" -o args= 2>/dev/null | grep -q 'state/dsh/runner/node_modules/\.bin/dsh'
+}
 for META in "${DSH_REMOTE_METADATA_FILE}" "${DSH_REMOTE_LEGACY_METADATA_FILE}"; do
   OLD_PID=$(read_managed_pid "$META")
-  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+  if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null && is_managed_dsh "$OLD_PID"; then
     kill "$OLD_PID" 2>/dev/null || true
     WAITED=0
     while [ "$WAITED" -lt 10 ] && kill -0 "$OLD_PID" 2>/dev/null; do

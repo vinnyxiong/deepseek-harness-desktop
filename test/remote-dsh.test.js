@@ -589,3 +589,34 @@ test('transfer script stops the running instance before swapping the runner', as
   assert.ok(script.indexOf('--version') < script.indexOf('read_managed_pid'));
   assert.ok(script.indexOf('read_managed_pid') < script.indexOf('failed to move old runner aside'));
 });
+
+// A metadata file can outlive the process it names, and pids get recycled --
+// killing whatever now holds that pid would be far worse than an orphan.
+test('transfer script verifies the pid is a dsh before signalling it', async () => {
+  const { tmpDir, tmpTar } = makeValidBundle();
+  const commands = [];
+  let callCount = 0;
+  const spawn = (bin, args) => {
+    commands.push(args[args.length - 1]);
+    const child = new EventEmitter();
+    child.stdout = new PassThrough(); child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.pid = 9000; child.kill = () => {};
+    const idx = callCount;
+    callCount += 1;
+    process.nextTick(() => {
+      child.stdout.write(idx === 0 ? 'PLATFORM:linux\nARCH:x64\nLIBC:gnu\nTRIPLE:linux-x64-gnu' : 'done');
+      child.emit('exit', 0, null);
+    });
+    return child;
+  };
+  try {
+    await transferRemoteDsh(settings, { spawnImpl: spawn, bundlePath: tmpTar, manifest: makeTestManifest() });
+  } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+
+  const script = commands[1];
+  assert.match(script, /is_managed_dsh/);
+  assert.match(script, /ps -p "\$1" -o args=/);
+  // The identity check gates the kill, rather than running after it.
+  assert.ok(script.indexOf('is_managed_dsh "$OLD_PID"') < script.indexOf('kill "$OLD_PID"'));
+});
